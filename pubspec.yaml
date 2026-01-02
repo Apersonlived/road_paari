@@ -36,12 +36,23 @@ dependencies:
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
+  postgres: ^3.5.9
   flutter_test:
     sdk: flutter
 
   flutter_osm_plugin: ^1.3.0
   latlong2: ^0.9.0
   http: ^1.1.0
+  # Secure Storage
+  flutter_secure_storage: ^10.0.0
+  
+  # Location
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  permission_handler: ^11.0.1
+
+  # For State Management
+  provider: ^6.1.1
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
