@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
-from database import Base
+from core.database import Base
 
 class OSMNode(Base):
     __tablename__ = "osm_node"
@@ -22,11 +22,11 @@ class OSMWay(Base):
     # pgRouting columns
     source = Column(Integer, index=True)
     target = Column(Integer, index=True)
-    cost = Column(Float)
-    reverse_cost = Column(Float)
+    cost = Column(float)
+    reverse_cost = Column(float)
     
     # Additional columns for multi-modal routing
-    length_meters = Column(Float)
+    length_meters = Column(float)
 
 class Route(Base):
     __tablename__ = "route"

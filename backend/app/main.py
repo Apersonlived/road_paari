@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from app.api.endpoints import routing
-from user_router import router as user_router
-# from app.api.endpoints import pois, auth
+from app.api.endpoints.user import router as user_router
+from app.api.endpoints import auth #pois
 
 app = FastAPI(
     title="Road Paari API",
@@ -10,14 +12,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Configure for Flutter app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:*",  # Flutter web for development
-        "*"  # Allow all origins during development (restrict in production)
+        "*"  # Allow all origins during development (restricts in production)
     ],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,7 +36,7 @@ app.include_router(
 app.include_router(user_router)
 
 # app.include_router(pois.router, prefix="/api/pois", tags=["pois"])
-# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 @app.get("/")
 def root():

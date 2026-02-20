@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
-from database import Base
+from app.core.database import Base
 
 class POICategory(Base):
     __tablename__ = "poi_category"

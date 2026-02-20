@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey
-from database import Base
+from app.core.database import Base
 
 class Notification(Base):
     __tablename__ = "notification"

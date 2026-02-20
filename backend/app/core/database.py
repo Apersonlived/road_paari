@@ -1,10 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "postgresql://postgres:postgres@localhost/roadpaari"
+from app.core.config import settings
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     echo=True,  
     pool_pre_ping=True, 
     pool_size=10,
@@ -27,17 +27,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# Test connection function
-def test_connection():
-    """Test database connection"""
-    try:
-        with engine.connect() as conn:
-            print("Database connection successful!")
-            return True
-    except Exception as e:
-        print(f"Database connection failed: {e}")
-        return False
-
-if __name__ == "__main__":
-    test_connection()
