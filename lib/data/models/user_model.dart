@@ -24,7 +24,7 @@ class User {
       fullName: json['full_name'] as String?,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
-      isAdmin: json['is_active'] as bool? ?? true,
+      isAdmin: json['is_admin'] as bool? ?? true,
       image: json['user_image_url'] as String?
     );
   }

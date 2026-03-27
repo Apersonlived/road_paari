@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.endpoints import routing
 from app.api.endpoints.user import router as user_router
-from app.api.endpoints import auth #pois
+from app.api.endpoints import auth, poi, notification
 
 app = FastAPI(
     title="Road Paari API",
@@ -29,14 +29,15 @@ app.add_middleware(
 # Include routers
 app.include_router(
     routing.router,
-    prefix="/api/routing",
+    prefix="/routing",
     tags=["routing"]
 )
 
 app.include_router(user_router)
 
-# app.include_router(pois.router, prefix="/api/pois", tags=["pois"])
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(poi.router, prefix="/poi", tags=["poi"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+# app.include_router(notification.router, prefix="/notifications", tags=["notifications"])
 
 @app.get("/")
 def root():

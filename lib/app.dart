@@ -5,12 +5,14 @@ import 'core/theme/app_theme.dart';
 import 'data/api/api_client.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/user_repository.dart';
+import 'data/repositories/poi_repository.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/map_provider.dart';
 import 'presentation/providers/location_provider.dart';
+import 'presentation/providers/poi_provider.dart';
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,33 +21,36 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         // Infrastructure for API calls
-        Provider<ApiClient>(
-          create: (_) => apiClient,
-        ),
-        Provider<AuthRepository>(
-          create: (_) => AuthRepository(apiClient),
-        ),
-        Provider<UserRepository>(
-          create: (_) => UserRepository(apiClient),
-        ),
+        Provider<ApiClient>(create: (_) => apiClient),
+        Provider<AuthRepository>(create: (_) => AuthRepository(apiClient)),
+        Provider<UserRepository>(create: (_) => UserRepository(apiClient)),
+        Provider<POIRepository>(create: (context) => POIRepository(apiClient)),
 
         // Auth uses two repositories: user and authentication
-        ChangeNotifierProxyProvider2<AuthRepository, UserRepository,
-            AuthProvider>(
+        ChangeNotifierProxyProvider2<
+          AuthRepository,
+          UserRepository,
+          AuthProvider
+        >(
           create: (_) => AuthProvider(
             authRepository: AuthRepository(apiClient),
             userRepository: UserRepository(apiClient),
           ),
           update: (_, authRepo, userRepo, previous) =>
-              previous ?? AuthProvider(
-                authRepository: authRepo,
-                userRepository: userRepo,
-              ),
+              previous ??
+              AuthProvider(authRepository: authRepo, userRepository: userRepo),
         ),
 
         // Map & Location
-        ChangeNotifierProvider(create: (_) => MapProvider()),
+        ChangeNotifierProvider(
+          create: (context) => MapProvider(apiClient: apiClient),
+        ),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
+        ChangeNotifierProxyProvider<POIRepository, POIProvider>(
+          create: (_) => POIProvider(repository: POIRepository(apiClient)),
+          update: (_, repo, previous) =>
+              previous ?? POIProvider(repository: repo),
+        ),
       ],
       child: MaterialApp(
         title: 'RoadPaari',

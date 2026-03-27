@@ -1,142 +1,17 @@
-class OSMNode {
-  final int osmId;
-  final String? name;
-  final bool isStop;
-  final double? latitude;
-  final double? longitude;
+class LocationPoint {
+  final double lat;
+  final double lng;
 
-  OSMNode({
-    required this.osmId,
-    this.name,
-    this.isStop = false,
-    this.latitude,
-    this.longitude,
-  });
+  LocationPoint({required this.lat, required this.lng});
 
-  factory OSMNode.fromJson(Map<String, dynamic> json) => OSMNode(
-        osmId: json['osm_id'] as int,
-        name: json['name'] as String?,
-        isStop: json['is_stop'] as bool? ?? false,
-        latitude: (json['latitude'] as num?)?.toDouble(),
-        longitude: (json['longitude'] as num?)?.toDouble(),
-      );
+  factory LocationPoint.fromJson(Map<String, dynamic> json) =>
+      LocationPoint(lat: (json['lat'] as num).toDouble(),
+                    lng: (json['lng'] as num).toDouble());
+
+  Map<String, dynamic> toJson() => {'lat': lat, 'lng': lng};
 }
 
-class OSMWay {
-  final int osmId;
-  final String? name;
-  final String? highwayType;
-  final int? source;
-  final int? target;
-  final double? cost;
-  final double? reverseCost;
-  final double? lengthMeters;
-  final Map<String, dynamic>? geometry;
 
-  OSMWay({
-    required this.osmId,
-    this.name,
-    this.highwayType,
-    this.source,
-    this.target,
-    this.cost,
-    this.reverseCost,
-    this.lengthMeters,
-    this.geometry,
-  });
-
-  factory OSMWay.fromJson(Map<String, dynamic> json) => OSMWay(
-        osmId: json['osm_id'] as int,
-        name: json['name'] as String?,
-        highwayType: json['highway_type'] as String?,
-        source: json['source'] as int?,
-        target: json['target'] as int?,
-        cost: (json['cost'] as num?)?.toDouble(),
-        reverseCost: (json['reverse_cost'] as num?)?.toDouble(),
-        lengthMeters: (json['length_meters'] as num?)?.toDouble(),
-        geometry: json['geometry'] as Map<String, dynamic>?,
-      );
-
-  String get formattedLength {
-    if (lengthMeters == null) return '';
-    return lengthMeters! >= 1000
-        ? '${(lengthMeters! / 1000).toStringAsFixed(2)} km'
-        : '${lengthMeters!.toStringAsFixed(0)} m';
-  }
-}
-
-class BusStop {
-  final int stopId;
-  final String? name;
-  final double? latitude;
-  final double? longitude;
-
-  BusStop({required this.stopId, this.name, this.latitude, this.longitude});
-
-  factory BusStop.fromJson(Map<String, dynamic> json) => BusStop(
-        stopId: json['stop_id'] as int,
-        name: json['name'] as String?,
-        latitude: (json['latitude'] as num?)?.toDouble(),
-        longitude: (json['longitude'] as num?)?.toDouble(),
-      );
-}
-
-class Route {
-  final int routeId;
-  final String? routeName;
-  final String? routeType;
-  final Map<String, dynamic>? geometry;
-
-  Route({required this.routeId, this.routeName, this.routeType, this.geometry});
-
-  factory Route.fromJson(Map<String, dynamic> json) => Route(
-        routeId: json['route_id'] as int,
-        routeName: json['route_name'] as String?,
-        routeType: json['route_type'] as String?,
-        geometry: json['geometry'] as Map<String, dynamic>?,
-      );
-
-  /// Extracts lat,long points from MultiLineString geometry
-  List<List<double>> get flatCoordinates {
-    if (geometry == null || geometry!['type'] != 'MultiLineString') return [];
-    final lines = geometry!['coordinates'] as List;
-    return lines
-        .expand((line) => (line as List).map((coord) => [
-              (coord[1] as num).toDouble(),
-              (coord[0] as num).toDouble(),
-            ]))
-        .toList();
-  }
-}
-
-class RouteWithStops extends Route {
-  final List<BusStop> stops;
-
-  RouteWithStops({
-    required super.routeId,
-    super.routeName,
-    super.routeType,
-    super.geometry,
-    required this.stops,
-  });
-
-  factory RouteWithStops.fromJson(Map<String, dynamic> json) {
-    final base = Route.fromJson(json);
-    return RouteWithStops(
-      routeId: base.routeId,
-      routeName: base.routeName,
-      routeType: base.routeType,
-      geometry: base.geometry,
-      stops: (json['stops'] as List<dynamic>? ?? [])
-          .map((s) => BusStop.fromJson(s as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-}
-
-// API response models 
-
-/// Matches backend NearestStop pydantic model
 class NearestStop {
   final int stopId;
   final String? stopName;
@@ -160,14 +35,15 @@ class NearestStop {
         longitude: (json['longitude'] as num).toDouble(),
       );
 
-  String get displayName => stopName ?? 'Stop $stopId';
+  // ── Helper getters used in MapScreen ──────────────────────────────────────
+  String get displayName => stopName ?? 'Stop #$stopId';
 
-  String get formattedDistance => distanceMeters >= 1000
-      ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
-      : '${distanceMeters.toStringAsFixed(0)} m';
+  String get formattedDistance => distanceMeters < 1000
+      ? '${distanceMeters.toStringAsFixed(0)}m'
+      : '${(distanceMeters / 1000).toStringAsFixed(1)}km';
 }
 
-/// To match with backend BusRoute pydantic model
+
 class BusRoute {
   final int routeId;
   final String routeName;
@@ -199,13 +75,13 @@ class BusRoute {
 
   String get formattedDistance {
     if (distanceMeters == null) return '';
-    return distanceMeters! >= 1000
-        ? '${(distanceMeters! / 1000).toStringAsFixed(2)} km'
-        : '${distanceMeters!.toStringAsFixed(0)} m';
+    return distanceMeters! < 1000
+        ? '${distanceMeters!.toStringAsFixed(0)}m'
+        : '${(distanceMeters! / 1000).toStringAsFixed(1)}km';
   }
 }
 
-/// Matches FastAPI RouteStop pydantic model
+
 class RouteStop {
   final int sequence;
   final int stopId;
@@ -230,7 +106,7 @@ class RouteStop {
       );
 }
 
-/// Matches FastAPI RouteDetails pydantic model
+
 class RouteDetails {
   final int routeId;
   final String routeName;
@@ -254,42 +130,38 @@ class RouteDetails {
         routeId: json['route_id'] as int,
         routeName: json['route_name'] as String,
         routeType: json['route_type'] as String,
-        totalDistanceMeters: (json['total_distance_meters'] as num).toDouble(),
-        estimatedTimeSeconds: (json['estimated_time_seconds'] as num).toDouble(),
+        totalDistanceMeters:
+            (json['total_distance_meters'] as num).toDouble(),
+        estimatedTimeSeconds:
+            (json['estimated_time_seconds'] as num).toDouble(),
         geometry: json['geometry'] as Map<String, dynamic>,
         stops: (json['stops'] as List)
             .map((s) => RouteStop.fromJson(s as Map<String, dynamic>))
             .toList(),
       );
 
-  String get formattedDistance => totalDistanceMeters >= 1000
-      ? '${(totalDistanceMeters / 1000).toStringAsFixed(2)} km'
-      : '${totalDistanceMeters.toStringAsFixed(0)} m';
-
-  String get formattedTime {
-    final minutes = (estimatedTimeSeconds / 60).round();
-    if (minutes >= 60) {
-      final h = minutes ~/ 60;
-      final m = minutes % 60;
-      return m > 0 ? '${h}h ${m}m' : '${h}h';
-    }
-    return '$minutes min';
-  }
-
-  /// Flattened [[lat, lng], ...] from geometry for drawing on map
+  // Flatten GeoJSON coordinates for drawing on map
   List<List<double>> get flatCoordinates {
-    if (geometry['type'] != 'MultiLineString') return [];
-    final lines = geometry['coordinates'] as List;
-    return lines
-        .expand((line) => (line as List).map((coord) => [
-              (coord[1] as num).toDouble(),
-              (coord[0] as num).toDouble(),
-            ]))
-        .toList();
+    try {
+      final type = geometry['type'] as String?;
+      final coords = geometry['coordinates'];
+      if (type == 'LineString' && coords is List) {
+        return coords.map<List<double>>((c) =>
+            [(c[1] as num).toDouble(), (c[0] as num).toDouble()]).toList();
+      }
+      if (type == 'MultiLineString' && coords is List) {
+        return coords
+            .expand((line) => (line as List))
+            .map<List<double>>((c) =>
+                [(c[1] as num).toDouble(), (c[0] as num).toDouble()])
+            .toList();
+      }
+    } catch (_) {}
+    return [];
   }
 }
 
-/// Matches FastAPI WalkingSegment pydantic model
+
 class WalkingSegment {
   final int seq;
   final int? wayId;
@@ -313,22 +185,24 @@ class WalkingSegment {
         wayName: json['way_name'] as String?,
         lengthMeters: (json['length_meters'] as num?)?.toDouble(),
         cost: (json['cost'] as num).toDouble(),
-        geometry: json['geometry'] as Map<String, dynamic>,
+        geometry: json['geometry'] as Map<String, dynamic>? ?? {},
       );
 
-  /// Extract [[lat, lng], ...] from LineString geometry for map drawing
+  // Extract [lat, lng] pairs from GeoJSON geometry
   List<List<double>> get coordinates {
-    if (geometry['type'] != 'LineString') return [];
-    return (geometry['coordinates'] as List)
-        .map((c) => [
-              (c[1] as num).toDouble(),
-              (c[0] as num).toDouble(),
-            ])
-        .toList();
+    try {
+      final type = geometry['type'] as String?;
+      final coords = geometry['coordinates'];
+      if (type == 'LineString' && coords is List) {
+        return coords.map<List<double>>((c) =>
+            [(c[1] as num).toDouble(), (c[0] as num).toDouble()]).toList();
+      }
+    } catch (_) {}
+    return [];
   }
 }
 
-/// Matches FastAPI CompleteJourney pydantic model — this is your main "route result"
+
 class CompleteJourney {
   final LocationPoint startLocation;
   final LocationPoint endLocation;
@@ -350,7 +224,8 @@ class CompleteJourney {
     this.walkingFromEnd,
   });
 
-  factory CompleteJourney.fromJson(Map<String, dynamic> json) => CompleteJourney(
+  factory CompleteJourney.fromJson(Map<String, dynamic> json) =>
+      CompleteJourney(
         startLocation:
             LocationPoint.fromJson(json['start_location'] as Map<String, dynamic>),
         endLocation:
@@ -373,51 +248,29 @@ class CompleteJourney {
             .toList(),
       );
 
-  //  Convenience helpers for MapScreen 
-
-  bool get hasWalkingSegments =>
-      (walkingToStart?.isNotEmpty ?? false) ||
-      (walkingFromEnd?.isNotEmpty ?? false);
-
-  /// All walking coords to draw on map: walk-to-stop + walk-from-stop
-  List<List<double>> get allWalkingCoordinates => [
-        ...?walkingToStart?.expand((w) => w.coordinates),
-        ...?walkingFromEnd?.expand((w) => w.coordinates),
-      ];
-
-  /// Total walking distance in meters
-  double get totalWalkingMeters {
-    final toStart =
-        walkingToStart?.fold(0.0, (sum, w) => sum + (w.lengthMeters ?? 0)) ?? 0;
-    final fromEnd =
-        walkingFromEnd?.fold(0.0, (sum, w) => sum + (w.lengthMeters ?? 0)) ?? 0;
-    return toStart + fromEnd;
-  }
-
-  String get formattedWalkingDistance {
-    final m = totalWalkingMeters;
-    return m >= 1000
-        ? '${(m / 1000).toStringAsFixed(2)} km'
-        : '${m.toStringAsFixed(0)} m';
-  }
+  // ── Helper getters used in MapScreen ──────────────────────────────────────
 
   NearestStop? get closestStartStop =>
       nearestStartStops.isNotEmpty ? nearestStartStops.first : null;
 
   NearestStop? get closestEndStop =>
       nearestEndStops.isNotEmpty ? nearestEndStops.first : null;
-}
 
-class LocationPoint {
-  final double lat;
-  final double lng;
+  bool get hasWalkingSegments =>
+      (walkingToStart?.isNotEmpty ?? false) ||
+      (walkingFromEnd?.isNotEmpty ?? false);
 
-  LocationPoint({required this.lat, required this.lng});
+  double get totalWalkingMeters {
+    double total = 0;
+    walkingToStart?.forEach((w) => total += w.lengthMeters ?? 0);
+    walkingFromEnd?.forEach((w) => total += w.lengthMeters ?? 0);
+    return total;
+  }
 
-  factory LocationPoint.fromJson(Map<String, dynamic> json) => LocationPoint(
-        lat: (json['lat'] as num).toDouble(),
-        lng: (json['lng'] as num).toDouble(),
-      );
-
-  Map<String, dynamic> toJson() => {'lat': lat, 'lng': lng};
+  String get formattedWalkingDistance {
+    final meters = totalWalkingMeters;
+    return meters < 1000
+        ? '${meters.toStringAsFixed(0)}m'
+        : '${(meters / 1000).toStringAsFixed(1)}km';
+  }
 }

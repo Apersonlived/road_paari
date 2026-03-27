@@ -2,15 +2,16 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
-  static const String baseUrl = 'http://10.0.2.2:8000/api'; //for android simulator
-  // baseUrl: 'http://192.168.1.x:8000/api' # to run on physical device
+  static String getBaseUrl() {
+  return 'http://10.0.2.2:8000/';
+}
   late final Dio _dio;
   String? _accessToken;
   String? _refreshToken;
 
   ApiClient() {
     _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
+      baseUrl: getBaseUrl(),
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
       headers: {

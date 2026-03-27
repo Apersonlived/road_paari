@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
 import 'package:provider/provider.dart';
@@ -9,23 +11,43 @@ import '../../providers/location_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({Key? key}) : super(key: key);
+  const MapScreen({super.key});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
 class _MapScreenState extends State<MapScreen> {
+  // ── Controllers & Focus ───────────────────────────────────────────────────
   late MapController mapController;
-
-  final TextEditingController _startLocationController = TextEditingController();
+  final TextEditingController _startLocationController =
+      TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
-  int _selectedIndex = 0;
-  bool _isSearchExpanded = false;
+  final FocusNode _startFocus = FocusNode();
+  final FocusNode _destFocus = FocusNode();
 
-  // Kathmandu Valley center and bounds
-  final GeoPoint _kathmanduCenter =
-      GeoPoint(latitude: 27.7172, longitude: 85.3240);
+  // ── Overlay & LayerLink ───────────────────────────────────────────────────
+  final LayerLink _startLayerLink = LayerLink();
+  final LayerLink _destLayerLink = LayerLink();
+  OverlayEntry? _startOverlay;
+  OverlayEntry? _destOverlay;
+
+  // ── Search State ──────────────────────────────────────────────────────────
+  Timer? _searchDebounce;
+  bool _isSearchingStart = false;
+  bool _isSearchingDest = false;
+
+  // ── UI State ──────────────────────────────────────────────────────────────
+  int _selectedIndex = 0;
+  bool _isSearchExpanded = true;
+  CompleteJourney? _currentJourney;
+  bool _showRouteDetails = false;
+
+  // ── Map Config ────────────────────────────────────────────────────────────
+  final GeoPoint _kathmanduCenter = GeoPoint(
+    latitude: 27.7172,
+    longitude: 85.3240,
+  );
   final BoundingBox _kathmanduBounds = BoundingBox(
     east: 85.45,
     north: 27.80,
@@ -33,8 +55,7 @@ class _MapScreenState extends State<MapScreen> {
     west: 85.20,
   );
 
-  CompleteJourney? _currentJourney;
-  bool _showRouteDetails = false;
+  // ── Init & Dispose ────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -43,9 +64,19 @@ class _MapScreenState extends State<MapScreen> {
       initPosition: _kathmanduCenter,
       areaLimit: _kathmanduBounds,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setKathmanduView();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _setKathmanduView());
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _removeAllOverlays();
+    mapController.dispose();
+    _startLocationController.dispose();
+    _destinationController.dispose();
+    _startFocus.dispose();
+    _destFocus.dispose();
+    super.dispose();
   }
 
   Future<void> _setKathmanduView() async {
@@ -57,120 +88,204 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    mapController.dispose();
-    _startLocationController.dispose();
-    _destinationController.dispose();
-    super.dispose();
+Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
+  try {
+    final dio = Dio(BaseOptions(
+      baseUrl: 'https://nominatim.openstreetmap.org',
+      headers: {
+        'User-Agent': 'RoadPaari/1.0 (roadpaari@gmail.com)',
+        'Accept-Language': 'en',
+      },
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+
+    final response = await dio.get('/search', queryParameters: {
+      'q': query,
+      'format': 'json',
+      'limit': 5,
+      'countrycodes': 'np',
+    });
+
+    debugPrint('Nominatim raw response: ${response.data}');
+    return (response.data as List)
+        .map((r) => _PlaceSuggestion.fromJson(r))
+        .toList();
+  } catch (e) {
+    debugPrint('Nominatim error: $e');
+    return [];
   }
+}
 
-  // Location Search
-  Future<void> _searchLocation(String query, bool isStart) async {
-    if (query.isEmpty) return;
+  // ── Overlay Management ────────────────────────────────────────────────────
+void _showStartOverlay(List<_PlaceSuggestion> suggestions) {
+  _removeStartOverlay();
+  if (suggestions.isEmpty) return;
+  _startOverlay = _buildOverlayEntry(
+    layerLink: _startLayerLink,
+    suggestions: suggestions,
+    onSelect: _selectStartSuggestion,
+  );
+  Overlay.of(context).insert(_startOverlay!);
+}
 
-    try {
-      final List<SearchInfo> suggestions = await addressSuggestion(
-        query,
-        limitInformation: 5,
-      );
+void _showDestOverlay(List<_PlaceSuggestion> suggestions) {
+  _removeDestOverlay();
+  if (suggestions.isEmpty) return;
+  _destOverlay = _buildOverlayEntry(
+    layerLink: _destLayerLink,
+    suggestions: suggestions,
+    onSelect: _selectDestSuggestion,
+  );
+  Overlay.of(context).insert(_destOverlay!);
+}
 
-      if (suggestions.isEmpty) {
-        _showSnackBar('No locations found. Try searching within Kathmandu Valley.');
-        return;
-      }
-
-      if (!mounted) return;
-
-      final selected = await _showLocationSuggestions(suggestions);
-
-      if (selected != null && selected.point != null) {
-        final geoPoint = selected.point!;
-        final locationProvider =
-            Provider.of<LocationProvider>(context, listen: false);
-
-        if (isStart) {
-          locationProvider.setStartLocation(geoPoint);
-          _startLocationController.text =
-              selected.address?.toString() ?? query;
-        } else {
-          locationProvider.setDestinationLocation(geoPoint);
-          _destinationController.text =
-              selected.address?.toString() ?? query;
-        }
-
-        await mapController.addMarker(
-          geoPoint,
-          markerIcon: MarkerIcon(
-            icon: Icon(
-              isStart ? Icons.location_on : Icons.flag,
-              color: isStart ? Colors.green : Colors.red,
-              size: 48,
+OverlayEntry _buildOverlayEntry({
+  required LayerLink layerLink,
+  required List<_PlaceSuggestion> suggestions,
+  required Function(_PlaceSuggestion) onSelect,
+}) {
+  return OverlayEntry(
+    builder: (context) => Positioned(
+      width: MediaQuery.of(context).size.width - 32,
+      child: CompositedTransformFollower(
+        link: layerLink,
+        showWhenUnlinked: false,
+        offset: const Offset(0, 56),
+        child: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              color: Colors.white,
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: suggestions.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 16),
+                itemBuilder: (context, index) {
+                  final s = suggestions[index];
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(Icons.location_on,
+                        color: AppColors.primary, size: 18),
+                    title: Text(
+                      s.displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    onTap: () {
+                      onSelect(s);
+                      _removeAllOverlays();
+                    },
+                  );
+                },
+              ),
             ),
           ),
-        );
-
-        await mapController.moveTo(geoPoint);
-
-        if (locationProvider.startLocation != null &&
-            locationProvider.destinationLocation != null) {
-          await _calculateRoute();
-        }
-      }
-    } catch (e) {
-      _showSnackBar('Error searching location: $e');
-    }
-  }
-
-  Future<SearchInfo?> _showLocationSuggestions(List<SearchInfo> suggestions) {
-    return showDialog<SearchInfo>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Location'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: suggestions.length,
-            itemBuilder: (context, index) {
-              final suggestion = suggestions[index];
-              return ListTile(
-                leading: Icon(Icons.location_on, color: AppColors.primary),
-                title: Text(
-                  suggestion.address?.toString() ?? 'Unknown',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => Navigator.pop(context, suggestion),
-              );
-            },
-          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
       ),
-    );
+    ),
+  );
+}
+
+  void _removeStartOverlay() {
+    _startOverlay?.remove();
+    _startOverlay = null;
   }
 
-  // ── Route Calculation ────────────────────────────────────────────────────────
+  void _removeDestOverlay() {
+    _destOverlay?.remove();
+    _destOverlay = null;
+  }
 
+  void _removeAllOverlays() {
+    _removeStartOverlay();
+    _removeDestOverlay();
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+void _onStartChanged(String value) {
+  _searchDebounce?.cancel();
+  if (value.length < 3) { _removeStartOverlay(); return; }
+  _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
+    if (!mounted) return;
+    setState(() => _isSearchingStart = true);
+    try {
+      final results = await _searchPlaces(value);
+      debugPrint('Start results: ${results.length}');
+      if (mounted) _showStartOverlay(results);
+    } finally {
+      if (mounted) setState(() => _isSearchingStart = false);
+    }
+  });
+}
+
+void _onDestChanged(String value) {
+  _searchDebounce?.cancel();
+  if (value.length < 3) { _removeDestOverlay(); return; }
+  _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
+    if (!mounted) return;
+    setState(() => _isSearchingDest = true);
+    try {
+      final results = await _searchPlaces(value);
+      debugPrint('Dest results: ${results.length}');
+      if (mounted) _showDestOverlay(results);
+    } finally {
+      if (mounted) setState(() => _isSearchingDest = false);
+    }
+  });
+}
+
+  // ── Select Suggestions ────────────────────────────────────────────────────
+Future<void> _selectStartSuggestion(_PlaceSuggestion suggestion) async {
+  _removeAllOverlays();
+  final locationProvider =
+      Provider.of<LocationProvider>(context, listen: false);
+  locationProvider.setStartLocation(suggestion.point);
+  _startLocationController.text = suggestion.displayName;
+  _startFocus.unfocus();
+  await mapController.addMarker(suggestion.point,
+      markerIcon: MarkerIcon(
+          icon: const Icon(Icons.location_on, color: Colors.green, size: 48)));
+  await mapController.moveTo(suggestion.point);
+  if (locationProvider.destinationLocation != null) await _calculateRoute();
+}
+
+Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
+  _removeAllOverlays();
+  final locationProvider =
+      Provider.of<LocationProvider>(context, listen: false);
+  locationProvider.setDestinationLocation(suggestion.point);
+  _destinationController.text = suggestion.displayName;
+  _destFocus.unfocus();
+  await mapController.addMarker(suggestion.point,
+      markerIcon: MarkerIcon(
+          icon: const Icon(Icons.flag, color: Colors.red, size: 48)));
+  await mapController.moveTo(suggestion.point);
+  if (locationProvider.startLocation != null) await _calculateRoute();
+}
+
+  // ── Route Calculation ─────────────────────────────────────────────────────
   Future<void> _calculateRoute() async {
-    final locationProvider =
-        Provider.of<LocationProvider>(context, listen: false);
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
     final mapProvider = Provider.of<MapProvider>(context, listen: false);
 
     if (locationProvider.startLocation == null ||
-        locationProvider.destinationLocation == null) return;
+        locationProvider.destinationLocation == null) {
+      _showSnackBar('Please set both start and destination');
+      return;
+    }
 
     try {
-      mapProvider.setLoading(true);
       setState(() => _showRouteDetails = false);
-
-      await mapController.removeLastRoad();
       await mapController.clearAllRoads();
 
       final journey = await mapProvider.planJourney(
@@ -182,74 +297,58 @@ class _MapScreenState extends State<MapScreen> {
 
       if (journey == null) {
         _showSnackBar('No route found. Try different locations.');
-        mapProvider.setLoading(false);
         return;
       }
 
       setState(() {
         _currentJourney = journey;
         _showRouteDetails = true;
+        _isSearchExpanded = false;
       });
 
       await _drawJourneyOnMap(journey);
-
-      mapProvider.setLoading(false);
-      setState(() => _isSearchExpanded = false);
     } catch (e) {
-      Provider.of<MapProvider>(context, listen: false).setLoading(false);
       _showSnackBar('Error calculating route: $e');
     }
   }
 
+  // ── Draw Journey ──────────────────────────────────────────────────────────
   Future<void> _drawJourneyOnMap(CompleteJourney journey) async {
     final mapProvider = Provider.of<MapProvider>(context, listen: false);
 
-    // Draw walking segment TO the first bus stop (orange dashed-style)
-    if (journey.walkingToStart != null &&
-        journey.walkingToStart!.isNotEmpty) {
+    // Walking to first stop
+    if (journey.walkingToStart?.isNotEmpty ?? false) {
       final walkPoints = journey.walkingToStart!
           .expand((w) => w.coordinates)
           .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
           .toList();
-
       if (walkPoints.isNotEmpty) {
         await mapController.drawRoadManually(
           walkPoints,
-          RoadOption(
-            roadWidth: 4,
-            roadColor: Colors.orange,
-            zoomInto: false,
-          ),
+          RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
         );
       }
     }
 
-    // Draw walking segment FROM the last bus stop (orange)
-    if (journey.walkingFromEnd != null &&
-        journey.walkingFromEnd!.isNotEmpty) {
+    // Walking from last stop
+    if (journey.walkingFromEnd?.isNotEmpty ?? false) {
       final walkPoints = journey.walkingFromEnd!
           .expand((w) => w.coordinates)
           .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
           .toList();
-
       if (walkPoints.isNotEmpty) {
         await mapController.drawRoadManually(
           walkPoints,
-          RoadOption(
-            roadWidth: 4,
-            roadColor: Colors.orange,
-            zoomInto: false,
-          ),
+          RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
         );
       }
     }
 
-    // Draw bus route geometry if a route has been selected/loaded
+    // Bus route geometry
     if (mapProvider.selectedRouteDetails != null) {
       final busPoints = mapProvider.selectedRouteDetails!.flatCoordinates
           .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
           .toList();
-
       if (busPoints.isNotEmpty) {
         await mapController.drawRoadManually(
           busPoints,
@@ -262,7 +361,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // Marker: nearest start stop
+    // Start stop marker
     if (journey.closestStartStop != null) {
       await mapController.addMarker(
         GeoPoint(
@@ -270,12 +369,12 @@ class _MapScreenState extends State<MapScreen> {
           longitude: journey.closestStartStop!.longitude,
         ),
         markerIcon: MarkerIcon(
-          icon: Icon(Icons.directions_bus, color: Colors.green, size: 40),
+          icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
         ),
       );
     }
 
-    // Marker: nearest end stop
+    // End stop marker
     if (journey.closestEndStop != null) {
       await mapController.addMarker(
         GeoPoint(
@@ -283,7 +382,7 @@ class _MapScreenState extends State<MapScreen> {
           longitude: journey.closestEndStop!.longitude,
         ),
         markerIcon: MarkerIcon(
-          icon: Icon(Icons.directions_bus, color: Colors.red, size: 40),
+          icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
         ),
       );
     }
@@ -291,31 +390,32 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadAndDrawRoute(BusRoute route) async {
     final mapProvider = Provider.of<MapProvider>(context, listen: false);
-
     final details = await mapProvider.loadRouteDetails(
       routeId: route.routeId,
       startStopId: _currentJourney?.closestStartStop?.stopId,
       endStopId: _currentJourney?.closestEndStop?.stopId,
     );
-
     if (details != null && _currentJourney != null) {
       await mapController.clearAllRoads();
       await _drawJourneyOnMap(_currentJourney!);
     }
   }
 
-  // Current Location 
+  // ── Current Location ──────────────────────────────────────────────────────
+
   Future<void> _getCurrentLocation() async {
     try {
       final currentPosition = await mapController.myLocation();
       await mapController.moveTo(currentPosition);
 
-      final locationProvider =
-          Provider.of<LocationProvider>(context, listen: false);
+      final locationProvider = Provider.of<LocationProvider>(
+        context,
+        listen: false,
+      );
       locationProvider.setCurrentLocation(currentPosition);
       locationProvider.setStartLocation(currentPosition);
-
       _startLocationController.text = 'Current Location';
+      setState(() => _isSearchExpanded = true);
 
       await mapController.addMarker(
         currentPosition,
@@ -323,35 +423,28 @@ class _MapScreenState extends State<MapScreen> {
           icon: const Icon(Icons.my_location, color: Colors.blue, size: 48),
         ),
       );
-
-      setState(() => _isSearchExpanded = true);
     } catch (e) {
       _showSnackBar('Error getting location: $e');
     }
   }
 
-  // Clear Route
+  // ── Clear Route ───────────────────────────────────────────────────────────
+
   Future<void> _clearRoute() async {
-    await mapController.removeLastRoad();
+    _removeAllOverlays();
+    _searchDebounce?.cancel();
     await mapController.clearAllRoads();
-
-    final locationProvider =
-        Provider.of<LocationProvider>(context, listen: false);
-    final mapProvider = Provider.of<MapProvider>(context, listen: false);
-
-    locationProvider.clearLocations();
-    mapProvider.clearRoute();
-
+    Provider.of<LocationProvider>(context, listen: false).clearLocations();
+    Provider.of<MapProvider>(context, listen: false).clearRoute();
     setState(() {
       _currentJourney = null;
       _showRouteDetails = false;
     });
-
     _startLocationController.clear();
     _destinationController.clear();
   }
 
-  // Helpers 
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _showSnackBar(String message) {
     if (!mounted) return;
@@ -363,8 +456,6 @@ class _MapScreenState extends State<MapScreen> {
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
     switch (index) {
-      case 0:
-        break;
       case 1:
         Navigator.pushNamed(context, AppRoutes.explore);
         break;
@@ -377,12 +468,14 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // Map 
+          // ── Map ────────────────────────────────────────────────────────────
           OSMFlutter(
             controller: mapController,
             osmOption: OSMOption(
@@ -398,26 +491,27 @@ class _MapScreenState extends State<MapScreen> {
               ),
               userLocationMarker: UserLocationMaker(
                 personMarker: MarkerIcon(
-                  icon: const Icon(Icons.navigation,
-                      color: Colors.blue, size: 48),
+                  icon: const Icon(
+                    Icons.navigation,
+                    color: Colors.blue,
+                    size: 48,
+                  ),
                 ),
                 directionArrowMarker: MarkerIcon(
                   icon: const Icon(Icons.arrow_upward, size: 48),
                 ),
               ),
-              roadConfiguration: RoadOption(
-                roadColor: AppColors.primary,
-              ),
+              roadConfiguration: RoadOption(roadColor: AppColors.primary),
             ),
           ),
 
-          // Search Panel
+          // ── Search Panel ───────────────────────────────────────────────────
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
             right: 16,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+            child: Material(
+              color: Colors.transparent,
               child: Card(
                 elevation: 8,
                 shape: RoundedRectangleBorder(
@@ -428,12 +522,14 @@ class _MapScreenState extends State<MapScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Collapsed state
                       if (!_isSearchExpanded)
                         ElevatedButton.icon(
                           onPressed: () =>
                               setState(() => _isSearchExpanded = true),
                           icon: const Icon(Icons.search),
-                          label: const Text('Where to?'),
+                          label: const Text('Where to?', style: TextStyle(height: 5, fontSize: 10, 
+                          color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             minimumSize: const Size(double.infinity, 50),
@@ -442,6 +538,8 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                           ),
                         ),
+
+                      // Expanded state
                       if (_isSearchExpanded) ...[
                         Row(
                           children: [
@@ -455,31 +553,125 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                             ),
                             IconButton(
-                              onPressed: () =>
-                                  setState(() => _isSearchExpanded = false),
+                              onPressed: () {
+                                _removeAllOverlays();
+                                setState(() => _isSearchExpanded = false);
+                              },
                               icon: const Icon(Icons.close),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        _buildSearchField(
-                          controller: _startLocationController,
-                          icon: Icons.location_on,
-                          hint: 'Start location',
-                          onSubmitted: (v) => _searchLocation(v, true),
+
+                        // Start field
+                        CompositedTransformTarget(
+                          link: _startLayerLink,
+                          child: TextField(
+                            controller: _startLocationController,
+                            focusNode: _startFocus,
+                            onChanged: _onStartChanged,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(
+                                Icons.location_on,
+                                color: Colors.red,
+                              ),
+                              suffixIcon: _isSearchingStart
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : _startLocationController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _startLocationController.clear();
+                                        _removeStartOverlay();
+                                        Provider.of<LocationProvider>(
+                                          context,
+                                          listen: false,
+                                        ).setStartLocation(null);
+                                      },
+                                    )
+                                  : null,
+                              hintText: 'Start location',
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        _buildSearchField(
-                          controller: _destinationController,
-                          icon: Icons.flag,
-                          hint: 'Destination',
-                          onSubmitted: (v) => _searchLocation(v, false),
+
+                        // Destination field
+                        CompositedTransformTarget(
+                          link: _destLayerLink,
+                          child: TextField(
+                            controller: _destinationController,
+                            focusNode: _destFocus,
+                            onChanged: _onDestChanged,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(
+                                Icons.flag,
+                                color: Colors.green,
+                              ),
+                              suffixIcon: _isSearchingDest
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : _destinationController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _destinationController.clear();
+                                        _removeDestOverlay();
+                                        Provider.of<LocationProvider>(
+                                          context,
+                                          listen: false,
+                                        ).setDestinationLocation(null);
+                                      },
+                                    )
+                                  : null,
+                              hintText: 'Destination',
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 12),
+
                         ElevatedButton.icon(
                           onPressed: _calculateRoute,
                           icon: const Icon(Icons.directions),
-                          label: const Text('Get Directions'),
+                          label: const Text('Get Directions', style: TextStyle(height: 5, fontSize: 10, 
+                          color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             minimumSize: const Size(double.infinity, 45),
@@ -496,205 +688,218 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // Route Details Panel
+          // ── Route Details Panel ────────────────────────────────────────────
           if (_showRouteDetails && _currentJourney != null)
             Positioned(
               left: 0,
               right: 0,
               bottom: 100,
-              child: Card(
-                margin: const EdgeInsets.all(16),
-                elevation: 8,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Header
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline, color: AppColors.primary),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Route Details',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () =>
-                                setState(() => _showRouteDetails = false),
-                            icon: const Icon(Icons.close),
-                            constraints: const BoxConstraints(),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ],
-                      ),
-                      const Divider(),
-
-                      // Summary chips
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildInfoChip(
-                            icon: Icons.directions_bus,
-                            label:
-                                '${_currentJourney!.directRoutes.length} route(s)',
-                            color: AppColors.primary,
-                          ),
-                          if (_currentJourney!.hasWalkingSegments)
-                            _buildInfoChip(
-                              icon: Icons.directions_walk,
-                              label: _currentJourney!.formattedWalkingDistance,
-                              color: Colors.orange,
-                            ),
-                        ],
-                      ),
-
-                      // Stop info
-                      if (_currentJourney!.closestStartStop != null ||
-                          _currentJourney!.closestEndStop != null) ...[
-                        const SizedBox(height: 12),
-                        _buildStopRow(
-                          icon: Icons.trip_origin,
-                          color: Colors.green,
-                          label: 'Board at',
-                          stop: _currentJourney!.closestStartStop,
-                        ),
-                        const SizedBox(height: 6),
-                        _buildStopRow(
-                          icon: Icons.location_on,
-                          color: Colors.red,
-                          label: 'Alight at',
-                          stop: _currentJourney!.closestEndStop,
-                        ),
-                      ],
-
-                      // Available bus routes list
-                      if (_currentJourney!.directRoutes.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Available Routes',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        ..._currentJourney!.directRoutes.map(
-                          (route) => _buildRouteListTile(route),
-                        ),
-                      ],
-
-                      // No direct route warning
-                      if (!_currentJourney!.hasDirectRoute) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.warning_amber,
-                                  color: Colors.red.shade700),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  'No direct route found. You may need to transfer.',
-                                  style: TextStyle(fontSize: 12),
-                                ),
+              child: Material(
+                color: Colors.transparent,
+                child: Card(
+                  margin: const EdgeInsets.all(16),
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Route Details',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                            ],
-                          ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () =>
+                                  setState(() => _showRouteDetails = false),
+                              icon: const Icon(Icons.close),
+                              constraints: const BoxConstraints(),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
                         ),
-                      ],
+                        const Divider(),
 
-                      // Walking notice
-                      if (_currentJourney!.hasWalkingSegments) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
+                        // Summary chips
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildInfoChip(
+                              icon: Icons.directions_bus,
+                              label:
+                                  '${_currentJourney!.directRoutes.length} route(s)',
+                              color: AppColors.primary,
+                            ),
+                            if (_currentJourney!.hasWalkingSegments)
+                              _buildInfoChip(
+                                icon: Icons.directions_walk,
+                                label:
+                                    _currentJourney!.formattedWalkingDistance,
+                                color: Colors.orange,
+                              ),
+                          ],
+                        ),
+
+                        // Stop info
+                        if (_currentJourney!.closestStartStop != null ||
+                            _currentJourney!.closestEndStop != null) ...[
+                          const SizedBox(height: 12),
+                          _buildStopRow(
+                            icon: Icons.trip_origin,
+                            color: Colors.green,
+                            label: 'Board at',
+                            stop: _currentJourney!.closestStartStop,
                           ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.directions_walk,
-                                  color: Colors.orange),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Walk ${_currentJourney!.formattedWalkingDistance} to/from stops',
-                                  style: TextStyle(
-                                    color: Colors.orange.shade900,
-                                    fontSize: 12,
+                          const SizedBox(height: 6),
+                          _buildStopRow(
+                            icon: Icons.location_on,
+                            color: Colors.red,
+                            label: 'Alight at',
+                            stop: _currentJourney!.closestEndStop,
+                          ),
+                        ],
+
+                        // Available routes
+                        if (_currentJourney!.directRoutes.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Available Routes',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          ..._currentJourney!.directRoutes.map(
+                            _buildRouteListTile,
+                          ),
+                        ],
+
+                        // No direct route warning
+                        if (!_currentJourney!.hasDirectRoute) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber,
+                                  color: Colors.red.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'No direct route. You may need to transfer.',
+                                    style: TextStyle(fontSize: 12),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
+
+                        // Walking notice
+                        if (_currentJourney!.hasWalkingSegments) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.directions_walk,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Walk ${_currentJourney!.formattedWalkingDistance} to/from stops',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade900,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
 
-          // FABs
+          // ── FABs ───────────────────────────────────────────────────────────
           Positioned(
             right: 16,
             bottom: 180,
-            child: Column(
-              children: [
-                FloatingActionButton(
-                  heroTag: 'location',
-                  onPressed: _getCurrentLocation,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.my_location),
-                ),
-                if (_currentJourney != null) ...[
-                  const SizedBox(height: 12),
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
                   FloatingActionButton(
-                    heroTag: 'clear',
-                    onPressed: _clearRoute,
-                    backgroundColor: Colors.red,
-                    mini: true,
-                    child: const Icon(Icons.clear),
+                    heroTag: 'location',
+                    onPressed: _getCurrentLocation,
+                    backgroundColor: AppColors.primary,
+                    child: const Icon(Icons.my_location),
                   ),
+                  if (_currentJourney != null) ...[
+                    const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: 'clear',
+                      onPressed: _clearRoute,
+                      backgroundColor: Colors.red,
+                      mini: true,
+                      child: const Icon(Icons.clear),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
 
-          // Loading Overlay
+          // ── Loading Overlay ────────────────────────────────────────────────
           Consumer<MapProvider>(
             builder: (context, mapProvider, _) {
               if (!mapProvider.isLoading) return const SizedBox.shrink();
               return Container(
-                color: Colors.black54,
-                child: Center(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text('Planning your journey...'),
-                        ],
+                child: Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Planning your journey...'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -710,29 +915,8 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
-    Widget _buildSearchField({
-    required TextEditingController controller,
-    required IconData icon,
-    required String hint,
-    required Function(String) onSubmitted,
-  }) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.primary),
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-      onSubmitted: onSubmitted,
-    );
-  }
+
+  // ── Helper Widgets ────────────────────────────────────────────────────────
 
   Widget _buildInfoChip({
     required IconData icon,
@@ -803,8 +987,11 @@ class _MapScreenState extends State<MapScreen> {
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.directions_bus,
-                  color: AppColors.primary, size: 20),
+              child: Icon(
+                Icons.directions_bus,
+                color: AppColors.primary,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -820,10 +1007,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   Text(
                     route.routeType,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
                 ],
               ),
@@ -831,14 +1015,29 @@ class _MapScreenState extends State<MapScreen> {
             if (route.distanceMeters != null)
               Text(
                 route.formattedDistance,
-                style:
-                    TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right,
-                size: 18, color: Colors.grey.shade400),
+            Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PlaceSuggestion {
+  final String displayName;
+  final GeoPoint point;
+
+  _PlaceSuggestion({required this.displayName, required this.point});
+
+  factory _PlaceSuggestion.fromJson(Map<String, dynamic> json) {
+    return _PlaceSuggestion(
+      displayName: json['display_name'] as String,
+      point: GeoPoint(
+        latitude: double.parse(json['lat']),
+        longitude: double.parse(json['lon']),
       ),
     );
   }

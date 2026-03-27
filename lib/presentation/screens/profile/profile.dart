@@ -7,7 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();

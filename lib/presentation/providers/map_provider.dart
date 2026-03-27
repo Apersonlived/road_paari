@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
+import '../../data/api/api_client.dart';
 import '../../data/repositories/routing_repository.dart';
 import '../../data/models/routing_models.dart';
 
 class MapProvider extends ChangeNotifier {
-  late Dio _dio;
-  late RoutingRepository _routingRepository;
+  final RoutingRepository _routingRepository;
 
   CompleteJourney? _currentJourney;
   RouteDetails? _selectedRouteDetails;
@@ -13,34 +12,15 @@ class MapProvider extends ChangeNotifier {
   String? _error;
   List<NearestStop> _nearbyStops = [];
 
-  MapProvider() {
-    _initializeDio();
-  }
+  MapProvider({required ApiClient apiClient})
+      : _routingRepository = RoutingRepository(apiClient.dio);
 
-  void _initializeDio() {
-    _dio = Dio(BaseOptions(
-      baseUrl: 'http://http://10.0.2.2:8000/api',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ));
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-      error: true,
-    ));
-    _routingRepository = RoutingRepository(_dio);
-  }
-
-  // Getters
+  // ── Getters ────────────────────────────────────────────────────────────────
   CompleteJourney? get currentJourney => _currentJourney;
   RouteDetails? get selectedRouteDetails => _selectedRouteDetails;
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<NearestStop> get nearbyStops => _nearbyStops;
-  RoutingRepository get routingRepository => _routingRepository;
-
-  void setBaseUrl(String url) => _dio.options.baseUrl = url;
 
   void setLoading(bool loading) {
     _isLoading = loading;
@@ -59,7 +39,7 @@ class MapProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// POST /plan-journey 
+  // ── Plan Journey ───────────────────────────────────────────────────────────
   Future<CompleteJourney?> planJourney({
     required double startLat,
     required double startLng,
@@ -77,22 +57,19 @@ class MapProvider extends ChangeNotifier {
         endLng: endLng,
         maxWalkDistance: maxWalkDistance,
       );
-      if (journey != null) {
-        _currentJourney = journey;
-        notifyListeners();
-      } else {
-        setError('No trip found');
-      }
+      _currentJourney = journey;
+      if (journey == null) setError('No trip found');
       setLoading(false);
+      notifyListeners();
       return journey;
     } catch (e) {
-      setError('Error planning the trip: $e');
+      setError('Error planning trip: $e');
       setLoading(false);
       return null;
     }
   }
 
-  /// Fetch full geometry for a specific bus route in the journey
+  // ── Route Details ──────────────────────────────────────────────────────────
   Future<RouteDetails?> loadRouteDetails({
     required int routeId,
     int? startStopId,
@@ -117,6 +94,7 @@ class MapProvider extends ChangeNotifier {
     }
   }
 
+  // ── Nearest Stops ──────────────────────────────────────────────────────────
   Future<List<NearestStop>> findNearestStops({
     required double lat,
     required double lng,

@@ -5,7 +5,7 @@ import '../../../../../core/constants/app_colors.dart';
 class RouteInfoCard extends StatelessWidget {
   final RoadInfo roadInfo;
 
-  const RouteInfoCard({Key? key, required this.roadInfo}) : super(key: key);
+  const RouteInfoCard({super.key, required this.roadInfo});
 
   @override
   Widget build(BuildContext context) {

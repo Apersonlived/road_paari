@@ -8,12 +8,12 @@ class LocationSearchField extends StatelessWidget {
   final Function(String) onSearch;
 
   const LocationSearchField({
-    Key? key,
+    super.key,
     required this.controller,
     required this.icon,
     required this.hint,
     required this.onSearch,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

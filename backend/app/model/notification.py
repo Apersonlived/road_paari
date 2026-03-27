@@ -6,6 +6,7 @@ class Notification(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("app_user.id"))
+    poi_id     = Column(Integer, ForeignKey("poi.id"), nullable=True)
     title = Column(String(150))
     message = Column(Text)
     is_read = Column(Boolean, default=False)

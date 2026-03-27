@@ -23,6 +23,7 @@ class POIBase(BaseModel):
 class POICreate(POIBase):
     latitude: float
     longitude: float
+    image_url: Optional[str] = None
 
 class POIUpdate(BaseModel):
     name: Optional[str] = None
@@ -30,11 +31,13 @@ class POIUpdate(BaseModel):
     category_id: Optional[int] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    image_url: Optional[str] = None
 
 class POI(POIBase):
     id: int
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    image_url: Optional[str] = None
     created_at: datetime
     created_by: Optional[int] = None
     
