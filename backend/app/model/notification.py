@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, ForeignKey
+from sqlalchemy import Column, DateTime, Integer, BigInteger, String, Text, Boolean, ForeignKey, func
 from app.core.database import Base
 
 class Notification(Base):
@@ -10,3 +10,4 @@ class Notification(Base):
     title = Column(String(150))
     message = Column(Text)
     is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

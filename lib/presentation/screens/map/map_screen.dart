@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../data/models/routing_models.dart';
-import '../../providers/map_provider.dart';
-import '../../providers/location_provider.dart';
+import '../../../providers/map_provider.dart';
+import '../../../providers/location_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
 class MapScreen extends StatefulWidget {
@@ -88,110 +88,118 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
-  try {
-    final dio = Dio(BaseOptions(
-      baseUrl: 'https://nominatim.openstreetmap.org',
-      headers: {
-        'User-Agent': 'RoadPaari/1.0 (roadpaari@gmail.com)',
-        'Accept-Language': 'en',
-      },
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
+  Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
+    try {
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: 'https://nominatim.openstreetmap.org',
+          headers: {
+            'User-Agent': 'RoadPaari/1.0 (roadpaari@gmail.com)',
+            'Accept-Language': 'en',
+          },
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
 
-    final response = await dio.get('/search', queryParameters: {
-      'q': query,
-      'format': 'json',
-      'limit': 5,
-      'countrycodes': 'np',
-    });
+      final response = await dio.get(
+        '/search',
+        queryParameters: {
+          'q': query,
+          'format': 'json',
+          'limit': 5,
+          'countrycodes': 'np',
+        },
+      );
 
-    debugPrint('Nominatim raw response: ${response.data}');
-    return (response.data as List)
-        .map((r) => _PlaceSuggestion.fromJson(r))
-        .toList();
-  } catch (e) {
-    debugPrint('Nominatim error: $e');
-    return [];
+      debugPrint('Nominatim raw response: ${response.data}');
+      return (response.data as List)
+          .map((r) => _PlaceSuggestion.fromJson(r))
+          .toList();
+    } catch (e) {
+      debugPrint('Nominatim error: $e');
+      return [];
+    }
   }
-}
 
   // ── Overlay Management ────────────────────────────────────────────────────
-void _showStartOverlay(List<_PlaceSuggestion> suggestions) {
-  _removeStartOverlay();
-  if (suggestions.isEmpty) return;
-  _startOverlay = _buildOverlayEntry(
-    layerLink: _startLayerLink,
-    suggestions: suggestions,
-    onSelect: _selectStartSuggestion,
-  );
-  Overlay.of(context).insert(_startOverlay!);
-}
+  void _showStartOverlay(List<_PlaceSuggestion> suggestions) {
+    _removeStartOverlay();
+    if (suggestions.isEmpty) return;
+    _startOverlay = _buildOverlayEntry(
+      layerLink: _startLayerLink,
+      suggestions: suggestions,
+      onSelect: _selectStartSuggestion,
+    );
+    Overlay.of(context).insert(_startOverlay!);
+  }
 
-void _showDestOverlay(List<_PlaceSuggestion> suggestions) {
-  _removeDestOverlay();
-  if (suggestions.isEmpty) return;
-  _destOverlay = _buildOverlayEntry(
-    layerLink: _destLayerLink,
-    suggestions: suggestions,
-    onSelect: _selectDestSuggestion,
-  );
-  Overlay.of(context).insert(_destOverlay!);
-}
+  void _showDestOverlay(List<_PlaceSuggestion> suggestions) {
+    _removeDestOverlay();
+    if (suggestions.isEmpty) return;
+    _destOverlay = _buildOverlayEntry(
+      layerLink: _destLayerLink,
+      suggestions: suggestions,
+      onSelect: _selectDestSuggestion,
+    );
+    Overlay.of(context).insert(_destOverlay!);
+  }
 
-OverlayEntry _buildOverlayEntry({
-  required LayerLink layerLink,
-  required List<_PlaceSuggestion> suggestions,
-  required Function(_PlaceSuggestion) onSelect,
-}) {
-  return OverlayEntry(
-    builder: (context) => Positioned(
-      width: MediaQuery.of(context).size.width - 32,
-      child: CompositedTransformFollower(
-        link: layerLink,
-        showWhenUnlinked: false,
-        offset: const Offset(0, 56),
-        child: Material(
-          elevation: 8,
-          borderRadius: BorderRadius.circular(12),
-          child: ClipRRect(
+  OverlayEntry _buildOverlayEntry({
+    required LayerLink layerLink,
+    required List<_PlaceSuggestion> suggestions,
+    required Function(_PlaceSuggestion) onSelect,
+  }) {
+    return OverlayEntry(
+      builder: (context) => Positioned(
+        width: MediaQuery.of(context).size.width - 32,
+        child: CompositedTransformFollower(
+          link: layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 56),
+          child: Material(
+            elevation: 8,
             borderRadius: BorderRadius.circular(12),
-            child: Container(
-              color: Colors.white,
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: suggestions.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 16),
-                itemBuilder: (context, index) {
-                  final s = suggestions[index];
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(Icons.location_on,
-                        color: AppColors.primary, size: 18),
-                    title: Text(
-                      s.displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    onTap: () {
-                      onSelect(s);
-                      _removeAllOverlays();
-                    },
-                  );
-                },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                color: Colors.white,
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: suggestions.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 16),
+                  itemBuilder: (context, index) {
+                    final s = suggestions[index];
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        Icons.location_on,
+                        color: AppColors.primary,
+                        size: 18,
+                      ),
+                      title: Text(
+                        s.displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      onTap: () {
+                        onSelect(s);
+                        _removeAllOverlays();
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   void _removeStartOverlay() {
     _startOverlay?.remove();
@@ -209,66 +217,83 @@ OverlayEntry _buildOverlayEntry({
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
-void _onStartChanged(String value) {
-  _searchDebounce?.cancel();
-  if (value.length < 3) { _removeStartOverlay(); return; }
-  _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
-    if (!mounted) return;
-    setState(() => _isSearchingStart = true);
-    try {
-      final results = await _searchPlaces(value);
-      debugPrint('Start results: ${results.length}');
-      if (mounted) _showStartOverlay(results);
-    } finally {
-      if (mounted) setState(() => _isSearchingStart = false);
+  void _onStartChanged(String value) {
+    debugPrint('Search triggered: "$value" length=${value.length}');
+    _searchDebounce?.cancel();
+    if (value.length < 3) {
+      _removeStartOverlay();
+      return;
     }
-  });
-}
+    _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      setState(() => _isSearchingStart = true);
+      try {
+        final results = await _searchPlaces(value);
+        debugPrint('Start results: ${results.length}');
+        if (mounted) _showStartOverlay(results);
+      } finally {
+        if (mounted) setState(() => _isSearchingStart = false);
+      }
+    });
+  }
 
-void _onDestChanged(String value) {
-  _searchDebounce?.cancel();
-  if (value.length < 3) { _removeDestOverlay(); return; }
-  _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
-    if (!mounted) return;
-    setState(() => _isSearchingDest = true);
-    try {
-      final results = await _searchPlaces(value);
-      debugPrint('Dest results: ${results.length}');
-      if (mounted) _showDestOverlay(results);
-    } finally {
-      if (mounted) setState(() => _isSearchingDest = false);
+  void _onDestChanged(String value) {
+    _searchDebounce?.cancel();
+    if (value.length < 3) {
+      _removeDestOverlay();
+      return;
     }
-  });
-}
+    _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      setState(() => _isSearchingDest = true);
+      try {
+        final results = await _searchPlaces(value);
+        debugPrint('Dest results: ${results.length}');
+        if (mounted) _showDestOverlay(results);
+      } finally {
+        if (mounted) setState(() => _isSearchingDest = false);
+      }
+    });
+  }
 
   // ── Select Suggestions ────────────────────────────────────────────────────
-Future<void> _selectStartSuggestion(_PlaceSuggestion suggestion) async {
-  _removeAllOverlays();
-  final locationProvider =
-      Provider.of<LocationProvider>(context, listen: false);
-  locationProvider.setStartLocation(suggestion.point);
-  _startLocationController.text = suggestion.displayName;
-  _startFocus.unfocus();
-  await mapController.addMarker(suggestion.point,
+  Future<void> _selectStartSuggestion(_PlaceSuggestion suggestion) async {
+    _removeAllOverlays();
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
+    locationProvider.setStartLocation(suggestion.point);
+    _startLocationController.text = suggestion.displayName;
+    _startFocus.unfocus();
+    await mapController.addMarker(
+      suggestion.point,
       markerIcon: MarkerIcon(
-          icon: const Icon(Icons.location_on, color: Colors.green, size: 48)));
-  await mapController.moveTo(suggestion.point);
-  if (locationProvider.destinationLocation != null) await _calculateRoute();
-}
+        icon: const Icon(Icons.location_on, color: Colors.green, size: 48),
+      ),
+    );
+    await mapController.moveTo(suggestion.point);
+    if (locationProvider.destinationLocation != null) await _calculateRoute();
+  }
 
-Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
-  _removeAllOverlays();
-  final locationProvider =
-      Provider.of<LocationProvider>(context, listen: false);
-  locationProvider.setDestinationLocation(suggestion.point);
-  _destinationController.text = suggestion.displayName;
-  _destFocus.unfocus();
-  await mapController.addMarker(suggestion.point,
+  Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
+    _removeAllOverlays();
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
+    locationProvider.setDestinationLocation(suggestion.point);
+    _destinationController.text = suggestion.displayName;
+    _destFocus.unfocus();
+    await mapController.addMarker(
+      suggestion.point,
       markerIcon: MarkerIcon(
-          icon: const Icon(Icons.flag, color: Colors.red, size: 48)));
-  await mapController.moveTo(suggestion.point);
-  if (locationProvider.startLocation != null) await _calculateRoute();
-}
+        icon: const Icon(Icons.flag, color: Colors.red, size: 48),
+      ),
+    );
+    await mapController.moveTo(suggestion.point);
+    if (locationProvider.startLocation != null) await _calculateRoute();
+  }
 
   // ── Route Calculation ─────────────────────────────────────────────────────
   Future<void> _calculateRoute() async {
@@ -296,7 +321,7 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
       );
 
       if (journey == null) {
-        _showSnackBar('No route found. Try different locations.');
+        _showSnackBar('No routes found between the selected stops.');
         return;
       }
 
@@ -313,96 +338,445 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
   }
 
   // ── Draw Journey ──────────────────────────────────────────────────────────
-  Future<void> _drawJourneyOnMap(CompleteJourney journey) async {
-    final mapProvider = Provider.of<MapProvider>(context, listen: false);
+Future<void> _drawJourneyOnMap(CompleteJourney journey) async {
+  // Only draw walking segments and stop markers on initial journey load.
+  // Bus route geometry is drawn only when user taps a specific route tile.
 
-    // Walking to first stop
-    if (journey.walkingToStart?.isNotEmpty ?? false) {
-      final walkPoints = journey.walkingToStart!
-          .expand((w) => w.coordinates)
-          .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-          .toList();
-      if (walkPoints.isNotEmpty) {
-        await mapController.drawRoadManually(
-          walkPoints,
-          RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-        );
-      }
-    }
-
-    // Walking from last stop
-    if (journey.walkingFromEnd?.isNotEmpty ?? false) {
-      final walkPoints = journey.walkingFromEnd!
-          .expand((w) => w.coordinates)
-          .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-          .toList();
-      if (walkPoints.isNotEmpty) {
-        await mapController.drawRoadManually(
-          walkPoints,
-          RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-        );
-      }
-    }
-
-    // Bus route geometry
-    if (mapProvider.selectedRouteDetails != null) {
-      final busPoints = mapProvider.selectedRouteDetails!.flatCoordinates
-          .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-          .toList();
-      if (busPoints.isNotEmpty) {
-        await mapController.drawRoadManually(
-          busPoints,
-          RoadOption(
-            roadWidth: 8,
-            roadColor: AppColors.primary,
-            zoomInto: true,
-          ),
-        );
-      }
-    }
-
-    // Start stop marker
-    if (journey.closestStartStop != null) {
-      await mapController.addMarker(
-        GeoPoint(
-          latitude: journey.closestStartStop!.latitude,
-          longitude: journey.closestStartStop!.longitude,
-        ),
-        markerIcon: MarkerIcon(
-          icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
-        ),
-      );
-    }
-
-    // End stop marker
-    if (journey.closestEndStop != null) {
-      await mapController.addMarker(
-        GeoPoint(
-          latitude: journey.closestEndStop!.latitude,
-          longitude: journey.closestEndStop!.longitude,
-        ),
-        markerIcon: MarkerIcon(
-          icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
-        ),
+  if (journey.walkingToStart?.isNotEmpty ?? false) {
+    final walkPoints = journey.walkingToStart!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
       );
     }
   }
 
-  Future<void> _loadAndDrawRoute(BusRoute route) async {
-    final mapProvider = Provider.of<MapProvider>(context, listen: false);
-    final details = await mapProvider.loadRouteDetails(
-      routeId: route.routeId,
-      startStopId: _currentJourney?.closestStartStop?.stopId,
-      endStopId: _currentJourney?.closestEndStop?.stopId,
+  if (journey.walkingFromEnd?.isNotEmpty ?? false) {
+    final walkPoints = journey.walkingFromEnd!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+      );
+    }
+  }
+
+  if (journey.closestStartStop != null) {
+    await mapController.addMarker(
+      GeoPoint(
+        latitude: journey.closestStartStop!.latitude,
+        longitude: journey.closestStartStop!.longitude,
+      ),
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
+      ),
     );
-    if (details != null && _currentJourney != null) {
-      await mapController.clearAllRoads();
-      await _drawJourneyOnMap(_currentJourney!);
+  }
+
+  if (journey.closestEndStop != null) {
+    await mapController.addMarker(
+      GeoPoint(
+        latitude: journey.closestEndStop!.latitude,
+        longitude: journey.closestEndStop!.longitude,
+      ),
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
+      ),
+    );
+  }
+
+  // Zoom to board stop
+  if (journey.closestStartStop != null) {
+    await mapController.moveTo(GeoPoint(
+      latitude: journey.closestStartStop!.latitude,
+      longitude: journey.closestStartStop!.longitude,
+    ));
+  }
+}
+
+// ── Called when user taps a route tile ───────────────────────────────────
+Future<void> _loadAndDrawRoute(BusRoute route) async {
+  final mapProvider = Provider.of<MapProvider>(context, listen: false);
+
+  if (_currentJourney == null) return;
+
+  final details = await mapProvider.loadRouteDetails(
+    routeId: route.routeId,
+    startStopId: _currentJourney!.closestStartStop?.stopId,
+    endStopId: _currentJourney!.closestEndStop?.stopId,
+  );
+
+  debugPrint('Flat coordinates count: ${details?.flatCoordinates.length}');
+
+  if (details == null) {
+    _showSnackBar('Could not load route geometry');
+    return;
+  }
+
+  // Clear all existing roads and markers
+  await mapController.clearAllRoads();
+
+  // Remove all previously added markers
+  final pointsToRemove = <GeoPoint>[];
+  final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+
+  if (locationProvider.startLocation != null) {
+    pointsToRemove.add(locationProvider.startLocation!);
+  }
+  if (locationProvider.destinationLocation != null) {
+    pointsToRemove.add(locationProvider.destinationLocation!);
+  }
+  if (_currentJourney!.closestStartStop != null) {
+    pointsToRemove.add(GeoPoint(
+      latitude: _currentJourney!.closestStartStop!.latitude,
+      longitude: _currentJourney!.closestStartStop!.longitude,
+    ));
+  }
+  if (_currentJourney!.closestEndStop != null) {
+    pointsToRemove.add(GeoPoint(
+      latitude: _currentJourney!.closestEndStop!.latitude,
+      longitude: _currentJourney!.closestEndStop!.longitude,
+    ));
+  }
+  for (final point in pointsToRemove) {
+    try { await mapController.removeMarker(point); } catch (_) {}
+  }
+
+  // ── 1. Walking to first stop (orange) ────────────────────────────────────
+  if (_currentJourney!.walkingToStart?.isNotEmpty ?? false) {
+    final walkPoints = _currentJourney!.walkingToStart!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+      );
     }
   }
+
+  // ── 2. Bus route geometry (thick, primary color) ──────────────────────────
+  final busPoints = details.flatCoordinates
+      .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+      .toList();
+
+  if (busPoints.isNotEmpty) {
+    await mapController.drawRoadManually(
+      busPoints,
+      RoadOption(
+        roadWidth: 8,
+        roadColor: AppColors.primary,
+        zoomInto: true,
+      ),
+    );
+  } else {
+    _showSnackBar('No geometry available for this route');
+  }
+
+  // ── 3. Walking from last stop (orange) ────────────────────────────────────
+  if (_currentJourney!.walkingFromEnd?.isNotEmpty ?? false) {
+    final walkPoints = _currentJourney!.walkingFromEnd!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+      );
+    }
+  }
+
+  // ── 4. Re-add start/destination markers ───────────────────────────────────
+  if (locationProvider.startLocation != null) {
+    await mapController.addMarker(
+      locationProvider.startLocation!,
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.location_on, color: Colors.green, size: 48),
+      ),
+    );
+  }
+  if (locationProvider.destinationLocation != null) {
+    await mapController.addMarker(
+      locationProvider.destinationLocation!,
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.flag, color: Colors.red, size: 48),
+      ),
+    );
+  }
+
+  // ── 5. Board and alight stop markers ─────────────────────────────────────
+  if (_currentJourney!.closestStartStop != null) {
+    await mapController.addMarker(
+      GeoPoint(
+        latitude: _currentJourney!.closestStartStop!.latitude,
+        longitude: _currentJourney!.closestStartStop!.longitude,
+      ),
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
+      ),
+    );
+  }
+  if (_currentJourney!.closestEndStop != null) {
+    await mapController.addMarker(
+      GeoPoint(
+        latitude: _currentJourney!.closestEndStop!.latitude,
+        longitude: _currentJourney!.closestEndStop!.longitude,
+      ),
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
+      ),
+    );
+  }
+}
+
+// ── inside _MapScreenState class ─────────────────────────────────────────
+
+Future<void> _loadAndDrawTransferRoute(TransferRoute transfer) async {
+  final mapProvider = Provider.of<MapProvider>(context, listen: false);
+  final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+
+  if (_currentJourney == null) return;
+
+  // Load both route geometries
+  final firstDetails = await mapProvider.loadRouteDetails(
+    routeId: transfer.firstRouteId,
+    startStopId: _currentJourney!.closestStartStop?.stopId,
+    endStopId: transfer.transferStopId,
+  );
+
+  final secondDetails = await mapProvider.loadRouteDetails(
+    routeId: transfer.secondRouteId,
+    startStopId: transfer.transferStopId,
+    endStopId: _currentJourney!.closestEndStop?.stopId,
+  );
+
+  if (firstDetails == null && secondDetails == null) {
+    _showSnackBar('Could not load transfer route geometry');
+    return;
+  }
+
+  // Clear everything
+  await mapController.clearAllRoads();
+  final pointsToRemove = <GeoPoint>[];
+  if (locationProvider.startLocation != null) pointsToRemove.add(locationProvider.startLocation!);
+  if (locationProvider.destinationLocation != null) pointsToRemove.add(locationProvider.destinationLocation!);
+  if (_currentJourney!.closestStartStop != null) {
+    pointsToRemove.add(GeoPoint(
+      latitude: _currentJourney!.closestStartStop!.latitude,
+      longitude: _currentJourney!.closestStartStop!.longitude,
+    ));
+  }
+  if (_currentJourney!.closestEndStop != null) {
+    pointsToRemove.add(GeoPoint(
+      latitude: _currentJourney!.closestEndStop!.latitude,
+      longitude: _currentJourney!.closestEndStop!.longitude,
+    ));
+  }
+  for (final point in pointsToRemove) {
+    try { await mapController.removeMarker(point); } catch (_) {}
+  }
+
+  // ── 1. Walking to first stop ──────────────────────────────────────────
+  if (_currentJourney!.walkingToStart?.isNotEmpty ?? false) {
+    final walkPoints = _currentJourney!.walkingToStart!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+      );
+    }
+  }
+
+  // ── 2. First bus leg (primary color) ─────────────────────────────────
+  if (firstDetails != null) {
+    final busPoints = firstDetails.flatCoordinates
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (busPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        busPoints,
+        RoadOption(roadWidth: 8, roadColor: AppColors.primary, zoomInto: true),
+      );
+    }
+  }
+
+  // ── 3. Transfer walk marker ───────────────────────────────────────────
+  // Look up transfer stop coordinates from nearestStops or use a fixed lookup
+  final transferStopPoint = _findStopPoint(transfer.transferStopId);
+  if (transferStopPoint != null) {
+    await mapController.addMarker(
+      transferStopPoint,
+      markerIcon: MarkerIcon(
+        icon: const Icon(Icons.sync_alt, color: Colors.orange, size: 40),
+      ),
+    );
+  }
+
+  // ── 4. Second bus leg (slightly different shade) ──────────────────────
+  if (secondDetails != null) {
+    final busPoints = secondDetails.flatCoordinates
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (busPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        busPoints,
+        RoadOption(roadWidth: 8, roadColor: Colors.teal, zoomInto: false),
+      );
+    }
+  }
+
+  // ── 5. Walking from last stop ─────────────────────────────────────────
+  if (_currentJourney!.walkingFromEnd?.isNotEmpty ?? false) {
+    final walkPoints = _currentJourney!.walkingFromEnd!
+        .expand((w) => w.coordinates)
+        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+        .toList();
+    if (walkPoints.isNotEmpty) {
+      await mapController.drawRoadManually(
+        walkPoints,
+        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+      );
+    }
+  }
+
+  // ── 6. Re-add all markers ─────────────────────────────────────────────
+  if (locationProvider.startLocation != null) {
+    await mapController.addMarker(locationProvider.startLocation!,
+      markerIcon: MarkerIcon(icon: const Icon(Icons.location_on, color: Colors.green, size: 48)));
+  }
+  if (locationProvider.destinationLocation != null) {
+    await mapController.addMarker(locationProvider.destinationLocation!,
+      markerIcon: MarkerIcon(icon: const Icon(Icons.flag, color: Colors.red, size: 48)));
+  }
+  if (_currentJourney!.closestStartStop != null) {
+    await mapController.addMarker(
+      GeoPoint(latitude: _currentJourney!.closestStartStop!.latitude,
+               longitude: _currentJourney!.closestStartStop!.longitude),
+      markerIcon: MarkerIcon(icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40)),
+    );
+  }
+  if (_currentJourney!.closestEndStop != null) {
+    await mapController.addMarker(
+      GeoPoint(latitude: _currentJourney!.closestEndStop!.latitude,
+               longitude: _currentJourney!.closestEndStop!.longitude),
+      markerIcon: MarkerIcon(icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40)),
+    );
+  }
+}
+
+// Helper to find a stop's GeoPoint from journey data
+GeoPoint? _findStopPoint(int stopId) {
+  final allStops = [
+    ...(_currentJourney?.nearestStartStops ?? []),
+    ...(_currentJourney?.nearestEndStops ?? []),
+  ];
+  try {
+    final stop = allStops.firstWhere((s) => s.stopId == stopId);
+    return GeoPoint(latitude: stop.latitude, longitude: stop.longitude);
+  } catch (_) {
+    return null;
+  }
+}
+
+Widget _buildTransferRouteTile(TransferRoute transfer) {
+  return InkWell(                          // ← make it tappable
+    onTap: () => _loadAndDrawTransferRoute(transfer),
+    borderRadius: BorderRadius.circular(8),
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // First leg
+          Row(
+            children: [
+              Icon(Icons.directions_bus, color: AppColors.primary, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(transfer.firstRouteName,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              ),
+            ],
+          ),
+          // Transfer point
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+            child: Row(
+              children: [
+                const Icon(Icons.sync_alt, color: Colors.orange, size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Transfer at: ${transfer.transferStopName ?? 'Stop #${transfer.transferStopId}'}',
+                    style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                  ),
+                ),
+                if (transfer.transferWalkMeters != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      transfer.transferWalkMeters! < 1000
+                          ? '${transfer.transferWalkMeters!.toStringAsFixed(0)}m walk'
+                          : '${(transfer.transferWalkMeters! / 1000).toStringAsFixed(1)}km walk',
+                      style: TextStyle(fontSize: 10, color: Colors.orange.shade800,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Second leg
+          Row(
+            children: [
+              const Icon(Icons.directions_bus, color: Colors.teal, size: 16), // ← teal to match map
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(transfer.secondRouteName,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              ),
+              if (transfer.totalDistanceMeters != null)
+                Text(transfer.formattedTotalDistance,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          ),
+          // Tap hint
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text('Tap to view on map',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+              Icon(Icons.chevron_right, size: 14, color: Colors.grey.shade400),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
   // ── Current Location ──────────────────────────────────────────────────────
-
   Future<void> _getCurrentLocation() async {
     try {
       final currentPosition = await mapController.myLocation();
@@ -429,11 +803,41 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
   }
 
   // ── Clear Route ───────────────────────────────────────────────────────────
-
   Future<void> _clearRoute() async {
     _removeAllOverlays();
     _searchDebounce?.cancel();
     await mapController.clearAllRoads();
+    await mapController.removeMarkers([]); // ← doesn't work for all, use below
+
+    // Remove start/destination markers explicitly
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
+    if (locationProvider.startLocation != null) {
+      await mapController.removeMarker(locationProvider.startLocation!);
+    }
+    if (locationProvider.destinationLocation != null) {
+      await mapController.removeMarker(locationProvider.destinationLocation!);
+    }
+    // Remove stop markers
+    if (_currentJourney?.closestStartStop != null) {
+      await mapController.removeMarker(
+        GeoPoint(
+          latitude: _currentJourney!.closestStartStop!.latitude,
+          longitude: _currentJourney!.closestStartStop!.longitude,
+        ),
+      );
+    }
+    if (_currentJourney?.closestEndStop != null) {
+      await mapController.removeMarker(
+        GeoPoint(
+          latitude: _currentJourney!.closestEndStop!.latitude,
+          longitude: _currentJourney!.closestEndStop!.longitude,
+        ),
+      );
+    }
+
     Provider.of<LocationProvider>(context, listen: false).clearLocations();
     Provider.of<MapProvider>(context, listen: false).clearRoute();
     setState(() {
@@ -442,6 +846,10 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
     });
     _startLocationController.clear();
     _destinationController.clear();
+
+    // Re-center map
+    await mapController.moveTo(_kathmanduCenter);
+    await mapController.setZoom(zoomLevel: 13);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -473,6 +881,7 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: Stack(
         children: [
           // ── Map ────────────────────────────────────────────────────────────
@@ -528,11 +937,17 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
                           onPressed: () =>
                               setState(() => _isSearchExpanded = true),
                           icon: const Icon(Icons.search),
-                          label: const Text('Where to?', style: TextStyle(height: 5, fontSize: 10, 
-                          color: Colors.white)),
+                          label: const Text(
+                            'Where to?',
+                            style: TextStyle(
+                              height: 3.2,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
-                            minimumSize: const Size(double.infinity, 50),
+                            minimumSize: const Size(double.infinity, 20),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -670,11 +1085,17 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
                         ElevatedButton.icon(
                           onPressed: _calculateRoute,
                           icon: const Icon(Icons.directions),
-                          label: const Text('Get Directions', style: TextStyle(height: 5, fontSize: 10, 
-                          color: Colors.white)),
+                          label: const Text(
+                            'Get Directions',
+                            style: TextStyle(
+                              height: 3.2,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
-                            minimumSize: const Size(double.infinity, 45),
+                            minimumSize: const Size(double.infinity, 25),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -702,150 +1123,180 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Header
-                        Row(
-                          children: [
-                            Icon(Icons.info_outline, color: AppColors.primary),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Route Details',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.70,
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Header
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: AppColors.primary,
                               ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () =>
-                                  setState(() => _showRouteDetails = false),
-                              icon: const Icon(Icons.close),
-                              constraints: const BoxConstraints(),
-                              padding: EdgeInsets.zero,
-                            ),
-                          ],
-                        ),
-                        const Divider(),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Route Details',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                onPressed: () =>
+                                    setState(() => _showRouteDetails = false),
+                                icon: const Icon(Icons.close),
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
+                              ),
+                            ],
+                          ),
+                          const Divider(),
 
-                        // Summary chips
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildInfoChip(
-                              icon: Icons.directions_bus,
-                              label:
-                                  '${_currentJourney!.directRoutes.length} route(s)',
-                              color: AppColors.primary,
-                            ),
-                            if (_currentJourney!.hasWalkingSegments)
+                          // Summary chips
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
                               _buildInfoChip(
-                                icon: Icons.directions_walk,
+                                icon: Icons.directions_bus,
                                 label:
-                                    _currentJourney!.formattedWalkingDistance,
-                                color: Colors.orange,
+                                    '${_currentJourney!.directRoutes.length} route(s)',
+                                color: AppColors.primary,
                               ),
-                          ],
-                        ),
-
-                        // Stop info
-                        if (_currentJourney!.closestStartStop != null ||
-                            _currentJourney!.closestEndStop != null) ...[
-                          const SizedBox(height: 12),
-                          _buildStopRow(
-                            icon: Icons.trip_origin,
-                            color: Colors.green,
-                            label: 'Board at',
-                            stop: _currentJourney!.closestStartStop,
-                          ),
-                          const SizedBox(height: 6),
-                          _buildStopRow(
-                            icon: Icons.location_on,
-                            color: Colors.red,
-                            label: 'Alight at',
-                            stop: _currentJourney!.closestEndStop,
-                          ),
-                        ],
-
-                        // Available routes
-                        if (_currentJourney!.directRoutes.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Available Routes',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          ..._currentJourney!.directRoutes.map(
-                            _buildRouteListTile,
-                          ),
-                        ],
-
-                        // No direct route warning
-                        if (!_currentJourney!.hasDirectRoute) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.warning_amber,
-                                  color: Colors.red.shade700,
-                                ),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'No direct route. You may need to transfer.',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // Walking notice
-                        if (_currentJourney!.hasWalkingSegments) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.directions_walk,
+                              if (_currentJourney!.hasWalkingSegments)
+                                _buildInfoChip(
+                                  icon: Icons.directions_walk,
+                                  label:
+                                      _currentJourney!.formattedWalkingDistance,
                                   color: Colors.orange,
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Walk ${_currentJourney!.formattedWalkingDistance} to/from stops',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade900,
-                                      fontSize: 12,
+                            ],
+                          ),
+
+                          // Stop info
+                          if (_currentJourney!.closestStartStop != null ||
+                              _currentJourney!.closestEndStop != null) ...[
+                            const SizedBox(height: 12),
+                            _buildStopRow(
+                              icon: Icons.trip_origin,
+                              color: Colors.green,
+                              label: 'Board at',
+                              stop: _currentJourney!.closestStartStop,
+                            ),
+                            const SizedBox(height: 6),
+                            _buildStopRow(
+                              icon: Icons.location_on,
+                              color: Colors.red,
+                              label: 'Arrive at',
+                              stop: _currentJourney!.closestEndStop,
+                            ),
+                          ],
+
+                          // Available routes
+                          // Direct routes
+                          if (_currentJourney!.directRoutes.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Available Routes',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            ..._currentJourney!.directRoutes.map(
+                              _buildRouteListTile,
+                            ),
+                          ],
+
+                          // Transfer routes (shown when no direct route)
+                          if (_currentJourney!.directRoutes.isEmpty &&
+                              _currentJourney!.transferRoutes.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Transfer Routes',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            ..._currentJourney!.transferRoutes.map(
+                              _buildTransferRouteTile,
+                            ),
+                          ],
+
+                          // No direct route warning
+                          if (!_currentJourney!.hasDirectRoute &&
+                              _currentJourney!.transferRoutes.isEmpty) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.warning_amber,
+                                    color: Colors.red.shade700,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'No route available. Try another location',
+                                      style: TextStyle(fontSize: 12),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
+
+                          // Walking notice
+                          if (_currentJourney!.hasWalkingSegments) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.directions_walk,
+                                    color: Colors.orange,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Walk ${_currentJourney!.formattedWalkingDistance} to/from stops',
+                                      style: TextStyle(
+                                        color: Colors.orange.shade900,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -917,7 +1368,6 @@ Future<void> _selectDestSuggestion(_PlaceSuggestion suggestion) async {
   }
 
   // ── Helper Widgets ────────────────────────────────────────────────────────
-
   Widget _buildInfoChip({
     required IconData icon,
     required String label,

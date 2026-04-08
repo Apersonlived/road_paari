@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:978937408641:android:dc734cf34ec4a7af9ff180",
+        "mobilesdk_app_id": "1:978937408641:android:68bf03f8a06cfa089ff180",
         "android_client_info": {
-          "package_name": "com.android.application"
+          "package_name": "com.example.road_paari"
         }
       },
       "oauth_client": [],

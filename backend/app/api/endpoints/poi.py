@@ -117,7 +117,7 @@ def update_poi(
     poi_id: int,
     poi_in: POIUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),  # protected
+    _=Depends(get_current_user),
 ):
     return poi_crud.update_poi(db, poi_id, poi_in)
 
@@ -126,6 +126,6 @@ def update_poi(
 def delete_poi(
     poi_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),  # protected
+    _=Depends(get_current_user),
 ):
     return poi_crud.delete_poi(db, poi_id)

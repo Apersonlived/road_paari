@@ -1,2 +1,4 @@
 google-services.json
 *.json
+.log
+.firebaserc

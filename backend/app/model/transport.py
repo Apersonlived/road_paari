@@ -18,7 +18,7 @@ class OSMWay(Base):
     name = Column(Text)
     highway_type = Column(Text)
     geom = Column(Geometry("LINESTRING", srid=4326))
-
+    
     # pgRouting columns
     source = Column(Integer, index=True)
     target = Column(Integer, index=True)
@@ -27,6 +27,11 @@ class OSMWay(Base):
     
     # Additional columns for multi-modal routing
     length_meters = Column(Float)
+    
+    is_routable  = Column(Boolean, default=True)
+    is_oneway    = Column(Boolean, default=False)
+    foot_access  = Column(Text)
+    surface      = Column(Text) 
 
 class Route(Base):
     __tablename__ = "route"
@@ -35,6 +40,7 @@ class Route(Base):
     route_name = Column(Text)
     route_type = Column(Text)
     geom = Column(Geometry("MULTILINESTRING", srid=4326))
+    direction  = Column(Text)
 
 class RouteWay(Base):
     __tablename__ = "route_way"
@@ -49,3 +55,9 @@ class BusStop(Base):
     stop_id = Column(BigInteger, primary_key=True)
     name = Column(Text)
     geom = Column(Geometry("POINT", srid=4326))
+    
+class RouteStop(Base):
+    __tablename__ = "route_stop"
+    route_id = Column(BigInteger, ForeignKey("route.route_id", ondelete="CASCADE"), primary_key=True)
+    stop_id  = Column(BigInteger, ForeignKey("bus_stop.stop_id"), primary_key=True)
+    sequence = Column(Integer)

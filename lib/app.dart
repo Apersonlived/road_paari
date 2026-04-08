@@ -6,10 +6,12 @@ import 'data/api/api_client.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'data/repositories/poi_repository.dart';
-import 'presentation/providers/auth_provider.dart';
-import 'presentation/providers/map_provider.dart';
-import 'presentation/providers/location_provider.dart';
-import 'presentation/providers/poi_provider.dart';
+import 'data/repositories/notif_repository.dart';
+import 'providers/auth_provider.dart';
+import 'providers/map_provider.dart';
+import 'providers/location_provider.dart';
+import 'providers/poi_provider.dart';
+import 'providers/notification_provider.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -25,6 +27,9 @@ class MyApp extends StatelessWidget {
         Provider<AuthRepository>(create: (_) => AuthRepository(apiClient)),
         Provider<UserRepository>(create: (_) => UserRepository(apiClient)),
         Provider<POIRepository>(create: (context) => POIRepository(apiClient)),
+        Provider<NotificationRepository>(
+          create: (_) => NotificationRepository(apiClient),
+        ),
 
         // Auth uses two repositories: user and authentication
         ChangeNotifierProxyProvider2<
@@ -51,6 +56,15 @@ class MyApp extends StatelessWidget {
           update: (_, repo, previous) =>
               previous ?? POIProvider(repository: repo),
         ),
+
+        // Notification
+        ChangeNotifierProxyProvider<NotificationRepository, NotificationProvider>(
+          create: (_) => NotificationProvider(
+            repository: NotificationRepository(apiClient),
+          ),
+          update: (_, repo, previous) =>
+              previous ?? NotificationProvider(repository: repo),
+        )
       ],
       child: MaterialApp(
         title: 'RoadPaari',

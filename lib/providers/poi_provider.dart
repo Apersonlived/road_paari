@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../data/models/poi_model.dart';
-import '../../data/repositories/poi_repository.dart';
+import '../data/models/poi_model.dart';
+import '../data/repositories/poi_repository.dart';
 
 class POIProvider extends ChangeNotifier {
   final POIRepository _repository;

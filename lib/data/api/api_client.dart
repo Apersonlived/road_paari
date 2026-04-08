@@ -3,21 +3,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
   static String getBaseUrl() {
-  return 'http://10.0.2.2:8000/';
-}
+    return 'http://10.0.2.2:8000/';
+  }
+
   late final Dio _dio;
   String? _accessToken;
   String? _refreshToken;
 
   ApiClient() {
-    _dio = Dio(BaseOptions(
-      baseUrl: getBaseUrl(),
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: getBaseUrl(),
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
 
     // Add interceptors
     _dio.interceptors.add(
@@ -43,7 +44,7 @@ class ApiClient {
   Future<void> _saveTokens(String accessToken, String refreshToken) async {
     _accessToken = accessToken;
     _refreshToken = refreshToken;
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
@@ -53,7 +54,7 @@ class ApiClient {
   Future<void> clearTokens() async {
     _accessToken = null;
     _refreshToken = null;
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
@@ -64,10 +65,10 @@ class ApiClient {
     if (_accessToken != null) {
       options.headers['Authorization'] = 'Bearer $_accessToken';
     }
-    
+
     print('request: ${options.method} ${options.path}');
     print('Headers: ${options.headers}');
-    
+
     handler.next(options);
   }
 
@@ -96,13 +97,13 @@ class ApiClient {
         if (response.statusCode == 200) {
           final newAccessToken = response.data['access_token'];
           final newRefreshToken = response.data['refresh_token'];
-          
+
           await _saveTokens(newAccessToken, newRefreshToken);
 
           // Retry the failed request
           final opts = error.requestOptions;
           opts.headers['Authorization'] = 'Bearer $newAccessToken';
-          
+
           final retryResponse = await _dio.fetch(opts);
           return handler.resolve(retryResponse);
         }
@@ -113,6 +114,16 @@ class ApiClient {
     }
 
     handler.next(error);
+  }
+
+  static String resolveImageUrl(String path) {
+    if (path.startsWith('http')) return path;
+
+    final base = getBaseUrl().endsWith('/')
+        ? getBaseUrl().substring(0, getBaseUrl().length - 1)
+        : getBaseUrl();
+
+    return Uri.parse(base).resolve(path).toString();
   }
 
   // Getters

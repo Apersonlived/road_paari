@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/poi_provider.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/poi_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 import '../../widgets/poi_card.dart';
+import '../../widgets/poi_detail.dart';
 import '../admin/admin_explore.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -152,8 +153,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final isAll = index == 0;
-                      final category =
-                          isAll ? null : provider.categories[index - 1];
+                      final category = isAll
+                          ? null
+                          : provider.categories[index - 1];
                       final isSelected = isAll
                           ? provider.selectedCategoryId == null
                           : provider.selectedCategoryId == category?.id;
@@ -186,8 +188,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline,
-                              size: 48, color: Colors.red),
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             provider.error!,
@@ -204,23 +209,29 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     );
                   }
 
-                  final displayList =
-                      _isSearchMode ? provider.searchResults : provider.pois;
+                  final displayList = _isSearchMode
+                      ? provider.searchResults
+                      : provider.pois;
 
                   if (displayList.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.location_off,
-                              size: 48, color: Colors.grey),
+                          const Icon(
+                            Icons.location_off,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             _isSearchMode
                                 ? 'No results for "${_searchController.text}"'
                                 : 'No POIs available yet',
                             style: const TextStyle(
-                                color: Colors.grey, fontSize: 16),
+                              color: Colors.grey,
+                              fontSize: 16,
+                            ),
                           ),
                         ],
                       ),
@@ -235,7 +246,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final poi = displayList[index];
-                        return POICard(poi: poi, showActions: false);
+                        return POICard(
+                          poi: poi,
+                          showActions: false,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => POIDetailScreen(poi: poi),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   );

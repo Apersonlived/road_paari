@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -12,6 +13,9 @@ from app.core.security import (
 )
 from app.schemas import User, UserCreate, Token
 from app.model import User as UserModel
+
+class FCMTokenUpdate(BaseModel):
+    fcm_token: str
 
 router = APIRouter()
 
@@ -59,6 +63,15 @@ async def login(
         "token_type": "bearer"
     }
 
+@router.patch("/me/fcm-token")
+def update_fcm_token(
+    payload: FCMTokenUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    current_user.fcm_token = payload.fcm_token
+    db.commit()
+    return {"ok": True}
 
 @router.get("/me", response_model=User)
 async def get_me(current_user: UserModel = Depends(get_current_user)):

@@ -12,3 +12,4 @@ class User(Base):
     is_admin = Column(Boolean)
     user_image_url = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    fcm_token = Column(String(255))

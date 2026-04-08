@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../../data/models/poi_model.dart';
-import '../../providers/poi_provider.dart';
-import '../../providers/auth_provider.dart';
+import '../../../providers/poi_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../widgets/poi_card.dart';
 
 class AdminPOIScreen extends StatefulWidget {
@@ -325,7 +325,6 @@ class _POIFormSheetState extends State<POIFormSheet> {
   }
 
   // ── Build ───────────────────────────────────────────────────────────────────
-
   Widget _buildImagePicker() {
     final existingUrl = widget.poi?.imageUrl;
     final hasExisting = existingUrl != null && !_removeExistingImage;

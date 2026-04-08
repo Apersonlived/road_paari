@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../data/api/api_exception.dart';
-import '../../data/models/user_model.dart';
-import '../../data/repositories/auth_repository.dart';
-import '../../data/repositories/user_repository.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import '../data/api/api_exception.dart';
+import '../data/models/user_model.dart';
+import '../data/repositories/auth_repository.dart';
+import '../data/repositories/user_repository.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthRepository _authRepository;
@@ -18,21 +20,18 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Getters
   User? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // For Auth actions
-  /// Call once at app startup to restore session if token exists
   Future<void> tryRestoreSession() async {
     if (!_authRepository.isAuthenticated()) return;
     try {
       _currentUser = await _authRepository.getCurrentUser();
       notifyListeners();
+      await _saveFcmToken(); // also save token on session restore
     } catch (_) {
-      // Token expired or invalid — clear it
       await _authRepository.logout();
     }
   }
@@ -43,6 +42,7 @@ class AuthProvider with ChangeNotifier {
     try {
       await _authRepository.login(email: email, password: password);
       _currentUser = await _authRepository.getCurrentUser();
+      await _saveFcmToken(); // ADD — save token after login
       _setLoading(false);
       return true;
     } on ApiException catch (e) {
@@ -65,8 +65,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
         fullName: fullName,
       );
-      // Auto-login after registration
-      return await login(email, password);
+      return await login(email, password); // login() calls _saveFcmToken()
     } on ApiException catch (e) {
       _setError(e.message);
       _setLoading(false);
@@ -78,19 +77,33 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Single definition of _saveFcmToken
+  Future<void> _saveFcmToken() async {
+    try {
+      String? token = NotificationService.instance.fcmToken;
+      if (token == null) {
+        token = await FirebaseMessaging.instance.getToken();
+      }
+      debugPrint('=== Saving FCM token: $token ===');
+      if (token == null) return;
+      await _authRepository.saveFcmToken(token);
+      debugPrint('=== FCM token saved successfully ===');
+    } catch (e) {
+      debugPrint('=== Failed to save FCM token: $e ===');
+    }
+  }
+
   Future<void> logout() async {
     _setLoading(true);
     try {
       await _authRepository.logout();
     } catch (_) {
-      // Clear locally regardless of server response
     } finally {
       _currentUser = null;
       _setLoading(false);
     }
   }
 
-  // Get profile actions from ProfileScreen
   Future<bool> updateProfile({String? fullName, String? email}) async {
     if (_currentUser == null) return false;
     _setLoading(true);

@@ -54,6 +54,7 @@ app.*.map.json
 
 #configuration files
 /lib/database_configuration.dart
+/lib/firebase_options.dart
 
 # OS
 .DS_Store

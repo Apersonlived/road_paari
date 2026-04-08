@@ -37,7 +37,7 @@ app.include_router(user_router)
 
 app.include_router(poi.router, prefix="/poi", tags=["poi"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-# app.include_router(notification.router, prefix="/notifications", tags=["notifications"])
+app.include_router(notification.router, prefix="/notifications", tags=["notifications"])
 
 @app.get("/")
 def root():

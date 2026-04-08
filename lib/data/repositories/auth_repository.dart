@@ -18,11 +18,7 @@ class AuthRepository {
     try {
       final response = await _apiClient.dio.post(
         '/auth/register',
-        data: {
-          'email': email,
-          'password': password,
-          'full_name': fullName,
-        },
+        data: {'email': email, 'password': password, 'full_name': fullName},
       );
 
       return User.fromJson(response.data);
@@ -32,27 +28,21 @@ class AuthRepository {
   }
 
   /// Login user
-  Future<Token> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<Token> login({required String email, required String password}) async {
     try {
       // FastAPI OAuth2PasswordRequestForm uses form data, not JSON
       final response = await _apiClient.dio.post(
         '/auth/login',
         data: FormData.fromMap({
-          'username': email,  // OAuth2 uses 'username' field
+          'username': email, // OAuth2 uses 'username' field
           'password': password,
         }),
       );
 
       final token = Token.fromJson(response.data);
-      
+
       // Save tokens to API client
-      await _apiClient.setTokens(
-        token.accessToken,
-        token.refreshToken,
-      );
+      await _apiClient.setTokens(token.accessToken, token.refreshToken);
 
       return token;
     } on DioException catch (e) {
@@ -68,6 +58,13 @@ class AuthRepository {
     } on DioException catch (e) {
       throw ApiException.fromDioError(e);
     }
+  }
+
+  Future<void> saveFcmToken(String token) async {
+    await _apiClient.dio.patch(
+      '/auth/me/fcm-token',
+      data: {'fcm_token': token},
+    );
   }
 
   /// Logout

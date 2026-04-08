@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../data/models/user_model.dart';
-import '../../providers/auth_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -147,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text(confirmLabel),
+                child: Text('Edit'),
               ),
             ],
           ),

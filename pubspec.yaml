@@ -55,6 +55,7 @@ dependencies:
   #Notification
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3
+  flutter_local_notifications: ^17.2.2
 
 dev_dependencies:
   postgres: ^3.5.9

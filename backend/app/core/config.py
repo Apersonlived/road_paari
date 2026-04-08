@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Road Paari"
     VERSION: str = "1.0.0"
     
+    #Firebase
+    FIREBASE_CREDENTIALS_PATH: str = "google-services.json"
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

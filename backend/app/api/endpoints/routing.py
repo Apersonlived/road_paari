@@ -1,3 +1,5 @@
+from asyncio.log import logger
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -27,33 +29,86 @@ def _parse_geometry(geom_data) -> dict:
 
 # Endpoints for routes
 @router.get("/nearest-stops", response_model=List[NearestStop])
-async def get_nearest_stops(
-    lat: float = Query(..., description="Latitude"),
-    lng: float = Query(..., description="Longitude"),
-    max_distance: int = Query(500, description="Max distance in meters"),
-    limit: int = Query(5, description="Number of stops to return"),
-    db: Session = Depends(get_db)
-):
-    """Find nearest bus stops to a location"""
+async def get_nearest_stops(lat: float, lng: float, max_distance: int, limit: int, db: Session = Depends(get_db)) -> List[NearestStop]:
+    """Nearest stops finder with distance validation"""
+    results = db.execute(
+        text("""
+            SELECT s.stop_id, s.name, 
+                   ST_Distance(s.geom::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) as distance,
+                   ST_Y(s.geom::geometry) as lat, ST_X(s.geom::geometry) as lng
+            FROM bus_stop s
+            WHERE ST_DWithin(s.geom::geography, 
+                            ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+                            :max_dist)
+            ORDER BY distance
+            LIMIT :lim
+        """),
+        {"lat": lat, "lng": lng, "max_dist": max_distance, "lim": limit}
+    ).fetchall()
+    
+    return [
+        NearestStop(
+            stop_id=row[0],
+            stop_name=row[1],
+            distance_meters=float(row[2]),
+            latitude=float(row[3]),
+            longitude=float(row[4])
+        )
+        for row in results
+    ]
+
+@router.get("/transfer-route", response_model=List[TransferRoute])
+async def find_transfer_routes(start_stop_id: int, end_stop_id: int, db: Session = Depends(get_db)) -> List[TransferRoute]:
+    """Find transfer routes with proper ranking"""
     try:
         results = db.execute(
-            text("SELECT * FROM find_nearest_stops(:lat, :lng, :max_dist, :lim)"),
-            {"lat": lat, "lng": lng, "max_dist": max_distance, "lim": limit}
+            text("SELECT * FROM find_transfer_routes(:start, :end)"),
+            {"start": start_stop_id, "end": end_stop_id}
         ).fetchall()
-
+        
         return [
-            NearestStop(
-                stop_id=row[0],
-                stop_name=row[1],
-                distance_meters=row[2],
-                latitude=row[3],
-                longitude=row[4]
+            TransferRoute(
+                first_route_id=row[0],
+                first_route_name=row[1],
+                transfer_stop_id=row[2],
+                transfer_stop_name=row[3],
+                second_route_id=row[4],
+                second_route_name=row[5],
+                total_stop_count=row[6],
+                transfer_walk_meters=row[7],
+                total_distance_meters=row[8]
             )
             for row in results
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"nearest-stops error: {str(e)}")
+        logger.warning(f"Transfer route search failed: {str(e)}")
+        return []
 
+@router.get("/calculate_walking_segment", response_model=List[WalkingSegment])
+async def calculate_walking_segment(start_lat: float, start_lng: float, 
+                                  end_lat: float, end_lng: float, 
+                                  db: Session = Depends(get_db)) -> List[WalkingSegment]:
+    """Calculate walking route with proper fallbacks"""
+    try:
+        results = db.execute(
+            text("SELECT * FROM calculate_walking_route(:s_lat, :s_lng, :e_lat, :e_lng)"),
+            {"s_lat": start_lat, "s_lng": start_lng, "e_lat": end_lat, "e_lng": end_lng}
+        ).fetchall()
+        
+        return [
+            WalkingSegment(
+                seq=row[0],
+                way_id=row[1],
+                way_name=row[2],
+                length_meters=row[3],
+                cost=row[4],
+                geometry=_parse_geometry(row[5])
+            )
+            for row in results
+        ]
+    except Exception as e:
+        logger.warning(f"Walking route calculation failed: {str(e)}")
+        return []
 
 @router.get("/routes-between-stops", response_model=List[BusRoute])
 async def get_routes_between_stops(
@@ -109,6 +164,9 @@ async def get_route_details(
         if not result:
             raise HTTPException(status_code=404, detail=f"Route {route_id} not found")
 
+        logger.info(f"Route result columns: {result._fields if hasattr(result, '_fields') else 'unknown'}")
+        logger.info(f"geom_json preview: {str(result[5])[:100] if result[5] else 'NULL'}")  # ← ADD
+
         stops_data = result[6]
         stops = []
         if stops_data:
@@ -136,255 +194,206 @@ async def get_route_details(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"route-details error for route {route_id}: {str(e)}", exc_info=True) 
         raise HTTPException(status_code=500, detail=f"route-details error: {str(e)}")
 
-
+# Plan journey
 @router.post("/plan-journey", response_model=CompleteJourney)
 async def plan_journey(
     start: LocationPoint,
     end: LocationPoint,
-    max_walk_distance: int = Query(500, description="Max walking distance in meters"),
+    max_walk_distance: int = Query(500),
     db: Session = Depends(get_db)
 ):
-    """
-    Plan complete journey from start to end location.
-    Uses closest stops only, finds direct + transfer routes,
-    and assembles a full end-to-end journey with walking segments.
-    """
     try:
-        # ── Step 1: Find nearest stops to start and end ───────────────────────
-        start_stops_result = db.execute(
-            text("SELECT * FROM find_nearest_stops(:lat, :lng, :max_dist, :lim)"),
-            {"lat": start.lat, "lng": start.lng, "max_dist": max_walk_distance, "lim": 3}
-        ).fetchall()
+        logger.info(f"Planning journey from {start} to {end}")
 
-        end_stops_result = db.execute(
-            text("SELECT * FROM find_nearest_stops(:lat, :lng, :max_dist, :lim)"),
-            {"lat": end.lat, "lng": end.lng, "max_dist": max_walk_distance, "lim": 3}
-        ).fetchall()
+        start_stops = await get_nearest_stops(start.lat, start.lng, max_walk_distance, 3, db)
+        end_stops = await get_nearest_stops(end.lat, end.lng, max_walk_distance, 3, db)
 
-        nearest_start = [
-            NearestStop(
-                stop_id=row[0], stop_name=row[1],
-                distance_meters=row[2], latitude=row[3], longitude=row[4]
+        # Always return nearest stops even if no route found
+        base_response = dict(
+            start_location=start,
+            end_location=end,
+            nearest_start_stops=start_stops,
+            nearest_end_stops=end_stops,
+            closest_start_stop=start_stops[0] if start_stops else None,
+            closest_end_stop=end_stops[0] if end_stops else None,
+        )
+
+        if not start_stops or not end_stops:
+            logger.warning("No stops found within walking distance")
+            walking_route = await calculate_walking_segment(
+                start.lat, start.lng, end.lat, end.lng, db
             )
-            for row in start_stops_result
-        ]
-
-        nearest_end = [
-            NearestStop(
-                stop_id=row[0], stop_name=row[1],
-                distance_meters=row[2], latitude=row[3], longitude=row[4]
-            )
-            for row in end_stops_result
-        ]
-
-        if not nearest_start or not nearest_end:
-            raise HTTPException(
-                status_code=404,
-                detail="No bus stops found near start or end location. "
-                       "Try increasing max_walk_distance."
+            return CompleteJourney(
+                **base_response,
+                journey_legs=[JourneyLeg(
+                    leg_type="walk",
+                    description="Walk entire journey (no nearby stops found)",
+                    segments=walking_route,
+                    route=None
+                )],
+                error_message="No bus stops found within walking distance"
             )
 
-        # ── Step 2: Use only the closest stop on each side ────────────────────
-        closest_start = nearest_start[0]
-        closest_end = nearest_end[0]
-
-        # ── Step 3: Find direct routes between the closest stop pair ──────────
+        # Step 2: Try direct routes across all nearby stop combinations
         direct_routes = []
-        has_direct = False
+        for s_stop in start_stops:
+            for e_stop in end_stops:
+                try:
+                    routes = await get_routes_between_stops(s_stop.stop_id, e_stop.stop_id, db)
+                    if routes:
+                        direct_routes.extend(routes)
+                except HTTPException as e:
+                    if e.status_code != 404:
+                        raise
 
-        try:
-            routes_result = db.execute(
-                text("SELECT * FROM find_routes_between_stops(:start, :end)"),
-                {"start": closest_start.stop_id, "end": closest_end.stop_id}
-            ).fetchall()
+        # Deduplicate by route_id
+        seen = set()
+        unique_direct = []
+        for r in direct_routes:
+            if r.route_id not in seen:
+                seen.add(r.route_id)
+                unique_direct.append(r)
+        direct_routes = unique_direct
 
-            for row in routes_result:
-                route = BusRoute(
-                    route_id=row[0],
-                    route_name=row[1],
-                    route_type=row[2],
-                    is_direct=row[3],
-                    start_sequence=row[4],
-                    end_sequence=row[5],
-                    distance_meters=row[6]
-                )
-                direct_routes.append(route)
-                if row[3]:  # is_direct
-                    has_direct = True
-        except Exception:
-            pass  # No direct routes found try transfers
-
-        # ── Step 4: Find transfer routes if no direct route exists ────────────
+        # Step 3: Only search transfers if truly no direct route exists
         transfer_routes = []
-        if not has_direct:
-            try:
-                # Find routes FROM the start stop, then routes TO the end stop,
-                # and match on a shared intermediate stop
-                outbound_result = db.execute(
-                    text("SELECT * FROM find_routes_from_stop(:stop_id)"),
-                    {"stop_id": closest_start.stop_id}
-                ).fetchall()
+        if not direct_routes:
+            for s_stop in start_stops:
+                for e_stop in end_stops:
+                    transfers = await find_transfer_routes(s_stop.stop_id, e_stop.stop_id, db)
+                    transfer_routes.extend(transfers)
+            # Deduplicate by (first_route_id, second_route_id)
+            seen_transfers = set()
+            unique_transfers = []
+            for t in transfer_routes:
+                key = (t.first_route_id, t.second_route_id)
+                if key not in seen_transfers:
+                    seen_transfers.add(key)
+                    unique_transfers.append(t)
+            transfer_routes = unique_transfers
 
-                inbound_result = db.execute(
-                    text("SELECT * FROM find_routes_from_stop(:stop_id)"),
-                    {"stop_id": closest_end.stop_id}
-                ).fetchall()
+        walking_to_start = await calculate_walking_segment(
+            start.lat, start.lng,
+            start_stops[0].latitude, start_stops[0].longitude,
+            db
+        )
+        walking_from_end = await calculate_walking_segment(
+            end_stops[0].latitude, end_stops[0].longitude,
+            end.lat, end.lng,
+            db
+        )
 
-                # Index inbound routes by the stops they serve
-                inbound_stops = {}
-                for row in inbound_result:
-                    stop_id = row[1]  # intermediate stop_id
-                    if stop_id not in inbound_stops:
-                        inbound_stops[stop_id] = []
-                    inbound_stops[stop_id].append(row)
-
-                # Find outbound routes that share a stop with an inbound route
-                for out_row in outbound_result:
-                    transfer_stop_id = out_row[1]
-                    if transfer_stop_id in inbound_stops:
-                        for in_row in inbound_stops[transfer_stop_id]:
-                            transfer = TransferRoute(
-                                first_route_id=out_row[0],
-                                first_route_name=out_row[2],
-                                transfer_stop_id=transfer_stop_id,
-                                transfer_stop_name=out_row[3],
-                                second_route_id=in_row[0],
-                                second_route_name=in_row[2],
-                            )
-                            # Avoid duplicates
-                            if not any(
-                                t.first_route_id == transfer.first_route_id
-                                and t.second_route_id == transfer.second_route_id
-                                for t in transfer_routes
-                            ):
-                                transfer_routes.append(transfer)
-            except Exception as transfer_err:
-                print(f"Transfer route search failed: {transfer_err}")
-
-        # ── Step 5: Walking to nearest start stop ─────────────────────────────
-        walking_to_start = None
-        try:
-            walk_result = db.execute(
-                text("""
-                    SELECT * FROM calculate_walking_route(
-                        :s_lat, :s_lng, :e_lat, :e_lng
-                    )
-                """),
-                {
-                    "s_lat": start.lat, "s_lng": start.lng,
-                    "e_lat": closest_start.latitude,
-                    "e_lng": closest_start.longitude
-                }
-            ).fetchall()
-
-            if walk_result:
-                walking_to_start = [
-                    WalkingSegment(
-                        seq=row[0], way_id=row[1], way_name=row[2],
-                        length_meters=row[3], cost=row[4],
-                        geometry=_parse_geometry(row[5])
-                    )
-                    for row in walk_result
-                ]
-        except Exception as walk_err:
-            print(f"Walking to start failed: {walk_err}")
-
-        # ── Step 6: Walking from nearest end stop ─────────────────────────────
-        walking_from_end = None
-        try:
-            walk_result = db.execute(
-                text("""
-                    SELECT * FROM calculate_walking_route(
-                        :s_lat, :s_lng, :e_lat, :e_lng
-                    )
-                """),
-                {
-                    "s_lat": closest_end.latitude,
-                    "s_lng": closest_end.longitude,
-                    "e_lat": end.lat, "e_lng": end.lng,
-                }
-            ).fetchall()
-
-            if walk_result:
-                walking_from_end = [
-                    WalkingSegment(
-                        seq=row[0], way_id=row[1], way_name=row[2],
-                        length_meters=row[3], cost=row[4],
-                        geometry=_parse_geometry(row[5])
-                    )
-                    for row in walk_result
-                ]
-        except Exception as walk_err:
-            print(f"Walking from end failed: {walk_err}")
-
-        # ── Step 7: Assemble the full end-to-end journey ──────────────────────
         journey_legs = []
 
         if walking_to_start:
             journey_legs.append(JourneyLeg(
                 leg_type="walk",
-                description=f"Walk to {closest_start.stop_name}",
+                description=f"Walk to {start_stops[0].stop_name} ({len(walking_to_start)} segments)",
                 segments=walking_to_start,
                 route=None
             ))
 
         if direct_routes:
+            best_route = min(direct_routes, key=lambda r: (
+                r.distance_meters or float('inf'),
+                (r.end_sequence or 0) - (r.start_sequence or 0)    
+            ))
             journey_legs.append(JourneyLeg(
                 leg_type="bus",
-                description=f"Bus from {closest_start.stop_name} to {closest_end.stop_name}",
+                description=f"{best_route.route_name} to {end_stops[0].stop_name}",
                 segments=None,
-                route=direct_routes[0]  # Best direct route
+                route=best_route
             ))
         elif transfer_routes:
-            first_transfer = transfer_routes[0]
+            best_transfer = min(transfer_routes, key=lambda t: (
+                t.total_stop_count or 999,
+                t.transfer_walk_meters or float('inf')
+            ))
+
             journey_legs.append(JourneyLeg(
                 leg_type="bus",
-                description=f"Bus ({first_transfer.first_route_name}) to {first_transfer.transfer_stop_name}",
+                description=f"{best_transfer.first_route_name} to {best_transfer.transfer_stop_name}",
                 segments=None,
-                route=first_transfer
+                route=BusRoute(
+                    route_id=best_transfer.first_route_id,
+                    route_name=best_transfer.first_route_name,
+                    route_type="bus",
+                    is_direct=False,
+                    start_sequence=None,
+                    end_sequence=None,
+                    distance_meters=None
+                )
             ))
+
+            if (best_transfer.transfer_walk_meters or 0) > 50:
+                journey_legs.append(JourneyLeg(
+                    leg_type="walk",
+                    description=f"Transfer at {best_transfer.transfer_stop_name}",
+                    segments=[WalkingSegment(
+                        seq=1,
+                        way_id=None,
+                        way_name="Transfer path",
+                        length_meters=best_transfer.transfer_walk_meters,
+                        cost=(best_transfer.transfer_walk_meters or 0) / 1.4,
+                        geometry={"type": "LineString", "coordinates": []}
+                    )],
+                    route=None
+                ))
+
             journey_legs.append(JourneyLeg(
-                leg_type="transfer",
-                description=f"Transfer at {first_transfer.transfer_stop_name}",
+                leg_type="bus",
+                description=f"{best_transfer.second_route_name} to {end_stops[0].stop_name}",
                 segments=None,
+                route=BusRoute(
+                    route_id=best_transfer.second_route_id,
+                    route_name=best_transfer.second_route_name,
+                    route_type="bus",
+                    is_direct=False,
+                    start_sequence=None,
+                    end_sequence=None,
+                    distance_meters=None
+                )
+            ))
+        else:
+            # No transit found — still return stop info + walking
+            journey_legs.append(JourneyLeg(
+                leg_type="walk",
+                description="No bus route found, walking entire journey",
+                segments=await calculate_walking_segment(
+                    start.lat, start.lng, end.lat, end.lng, db
+                ),
                 route=None
-            ))
-            journey_legs.append(JourneyLeg(
-                leg_type="bus",
-                description=f"Bus ({first_transfer.second_route_name}) to {closest_end.stop_name}",
-                segments=None,
-                route=first_transfer
             ))
 
         if walking_from_end:
             journey_legs.append(JourneyLeg(
                 leg_type="walk",
-                description=f"Walk from {closest_end.stop_name} to destination",
+                description=f"Walk from {end_stops[0].stop_name} to destination",
                 segments=walking_from_end,
                 route=None
             ))
 
         return CompleteJourney(
-            start_location=start,
-            end_location=end,
-            nearest_start_stops=nearest_start,
-            nearest_end_stops=nearest_end,
-            closest_start_stop=closest_start,
-            closest_end_stop=closest_end,
+            **base_response,
             direct_routes=direct_routes,
             transfer_routes=transfer_routes,
-            has_direct_route=has_direct,
+            has_direct_route=bool(direct_routes),
             walking_to_start=walking_to_start,
             walking_from_end=walking_from_end,
             journey_legs=journey_legs
         )
 
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"plan-journey error: {str(e)}")
+        logger.error(f"Journey planning failed: {str(e)}", exc_info=True)
+        # ← Return partial data instead of a bare 500
+        return CompleteJourney(
+            start_location=start,
+            end_location=end,
+            error_message=f"Journey planning failed: {str(e)}"
+        )
 
 @router.get("/routes-at-stop/{stop_id}")
 async def get_routes_at_stop(
@@ -430,6 +439,93 @@ async def get_available_route_types(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/route-info/{route_id}")
+async def get_route_info(
+    route_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get route metadata including direction and type"""
+    try:
+        result = db.execute(
+            text("""
+                SELECT 
+                    r.route_id,
+                    r.route_name,
+                    r.route_type,
+                    r.direction,
+                    COUNT(rs.stop_id) as stop_count,
+                    ST_Length(r.geom::geography) as total_distance_meters
+                FROM route r
+                LEFT JOIN route_stop rs ON rs.route_id = r.route_id
+                WHERE r.route_id = :route_id
+                GROUP BY r.route_id, r.route_name, r.route_type, 
+                         r.direction, r.geom
+            """),
+            {"route_id": route_id}
+        ).fetchone()
+
+        if not result:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Route {route_id} not found"
+            )
+
+        return {
+            "route_id":              result[0],
+            "route_name":            result[1],
+            "route_type":            result[2],
+            "direction":             result[3],
+            "stop_count":            result[4],
+            "total_distance_meters": result[5]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/way-info/{way_id}")
+async def get_way_info(
+    way_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get way metadata including oneway, foot access, surface"""
+    try:
+        result = db.execute(
+            text("""
+                SELECT 
+                    osm_id,
+                    name,
+                    highway_type,
+                    is_oneway,
+                    foot_access,
+                    surface,
+                    length_meters
+                FROM osm_way
+                WHERE osm_id = :way_id
+            """),
+            {"way_id": way_id}
+        ).fetchone()
+
+        if not result:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Way {way_id} not found"
+            )
+
+        return {
+            "way_id":        result[0],
+            "name":          result[1],
+            "highway_type":  result[2],
+            "is_oneway":     result[3],
+            "foot_access":   result[4],
+            "surface":       result[5],
+            "length_meters": result[6]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/health")
 async def health_check():

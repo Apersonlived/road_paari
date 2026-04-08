@@ -23,6 +23,7 @@ class UserInDB(UserBase):
     is_active: bool
     is_admin: bool
     created_at: datetime
+    fcm_token: Optional[str] = None
     
     class Config:
         from_attributes = True
