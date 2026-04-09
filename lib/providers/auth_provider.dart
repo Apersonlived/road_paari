@@ -5,16 +5,20 @@ import '../data/models/user_model.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/user_repository.dart';
 import '../services/notification_service.dart';
+import '../services/proximity_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthRepository _authRepository;
   final UserRepository _userRepository;
+  final ProximityService _proximityService;
 
   AuthProvider({
     required AuthRepository authRepository,
     required UserRepository userRepository,
+    required ProximityService proximityService, 
   })  : _authRepository = authRepository,
-        _userRepository = userRepository;
+        _userRepository = userRepository,
+        _proximityService = proximityService;
 
   User? _currentUser;
   bool _isLoading = false;
@@ -31,6 +35,7 @@ class AuthProvider with ChangeNotifier {
       _currentUser = await _authRepository.getCurrentUser();
       notifyListeners();
       await _saveFcmToken(); // also save token on session restore
+      _proximityService.start();
     } catch (_) {
       await _authRepository.logout();
     }
@@ -42,7 +47,8 @@ class AuthProvider with ChangeNotifier {
     try {
       await _authRepository.login(email: email, password: password);
       _currentUser = await _authRepository.getCurrentUser();
-      await _saveFcmToken(); // ADD — save token after login
+      await _saveFcmToken();
+      _proximityService.start();
       _setLoading(false);
       return true;
     } on ApiException catch (e) {
@@ -81,9 +87,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> _saveFcmToken() async {
     try {
       String? token = NotificationService.instance.fcmToken;
-      if (token == null) {
-        token = await FirebaseMessaging.instance.getToken();
-      }
+      token ??= await FirebaseMessaging.instance.getToken();
       debugPrint('=== Saving FCM token: $token ===');
       if (token == null) return;
       await _authRepository.saveFcmToken(token);
@@ -97,6 +101,7 @@ class AuthProvider with ChangeNotifier {
     _setLoading(true);
     try {
       await _authRepository.logout();
+      _proximityService.stop();
     } catch (_) {
     } finally {
       _currentUser = null;

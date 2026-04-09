@@ -11,6 +11,7 @@ class LocationProvider with ChangeNotifier {
   GeoPoint? get destinationLocation => _destinationLocation;
 
   void setCurrentLocation(GeoPoint location) {
+    debugPrint('=== Location set: ${location.latitude}, ${location.longitude} ===');
     _currentLocation = location;
     notifyListeners();
   }

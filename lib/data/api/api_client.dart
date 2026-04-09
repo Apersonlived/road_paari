@@ -28,7 +28,9 @@ class ApiClient {
         onResponse: _onResponse,
       ),
     );
+  }
 
+  Future<void> init() async{
     // Load saved tokens
     _loadTokens();
   }

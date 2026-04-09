@@ -3,43 +3,41 @@ from sqlalchemy.orm import Session
 from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID, ST_Distance
 from sqlalchemy import cast
 from geoalchemy2 import Geography
+from app.model.user import User
 
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.security import get_current_user
 from app.model.poi import POI
 from app.model.notification import Notification
 from app.schemas.notif import (
-    NotificationOut, ProximityCheckRequest, ProximityCheckResponse
+    NotificationOut, ProximityCheckRequest, ProximityCheckResponse, NotificationCreate
 )
 from app.crud import notification as notif_crud
 from app.services.fcm_service import send_push
 
-router = APIRouter(prefix="/notifications", tags=["notifications"])
+router = APIRouter()
 
-def _push_and_save(
-    db: Session,
-    user_id: int,
-    fcm_token: str,
-    nearby: list[dict],
-):
-    """Background task: send FCM push + persist a Notification row per POI."""
-    for poi in nearby:
-        title = f"You're near {poi['name']}!"
-        body  = f"{poi['name']} is {poi['distance_meters']:.0f} m away."
-        send_push(
-            fcm_token, title, body,
-            data={"poi_id": poi["id"], "type": "proximity"},
-        )
-        notif_crud.create_notification(
-            db,
-            data=__import__("app.schemas.notification", fromlist=["NotificationCreate"])
-                .NotificationCreate(
-                    user_id=user_id,
-                    poi_id=poi["id"],
-                    title=title,
-                    message=body,
+def _push_and_save(user_id, fcm_token, nearby):
+    db = SessionLocal()
+    try:
+        for poi in nearby:
+            # ← skip if notified recently
+            if notif_crud.was_recently_notified(db, user_id, poi["id"]):
+                continue
+
+            title = f"You're near {poi['name']}!"
+            body  = f"{poi['name']} is {poi['distance_meters']:.0f}m away."
+            send_push(fcm_token, title, body,
+                      data={"poi_id": str(poi["id"]), "type": "proximity"})
+            notif_crud.create_notification(
+                db,
+                data=NotificationCreate(
+                    user_id=user_id, poi_id=poi["id"],
+                    title=title, message=body,
                 ),
-        )
+            )
+    finally:
+        db.close()
         
 @router.post("/proximity-check", response_model=ProximityCheckResponse)
 def proximity_check(
@@ -48,6 +46,10 @@ def proximity_check(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # Read token from DB instead of payload
+    user = db.query(User).filter(User.id == current_user.id).first()
+    fcm_token = user.fcm_token if user else None
+
     user_point = cast(
         ST_SetSRID(ST_MakePoint(payload.longitude, payload.latitude), 4326),
         Geography,
@@ -70,11 +72,14 @@ def proximity_check(
         for r in rows
     ]
 
-    print(f"Nearby POIs: {nearby}")  # Debugging
-
-    if nearby:
+    if nearby and fcm_token:
         background_tasks.add_task(
-            _push_and_save, db, current_user.id, payload.fcm_token, nearby
+            _push_and_save, current_user.id, fcm_token, nearby
+        )
+    elif nearby and not fcm_token:
+        # No FCM token — still save to inbox
+        background_tasks.add_task(
+            _push_and_save, current_user.id, None, nearby
         )
 
     return ProximityCheckResponse(triggered=bool(nearby), nearby_pois=nearby)

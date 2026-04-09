@@ -7,7 +7,7 @@ from app.schemas.user import User, UserCreate, UserUpdate, UserPasswordUpdate
 from app.crud import user
 from app.core.database import get_db  
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter()
 
 @router.post("/", response_model=User, status_code=status.HTTP_201_CREATED)
 def create_user(user_in: UserCreate, db: Session = Depends(get_db)):

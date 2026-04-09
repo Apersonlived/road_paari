@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'services/proximity_service.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'data/api/api_client.dart';
@@ -14,57 +15,74 @@ import 'providers/poi_provider.dart';
 import 'providers/notification_provider.dart';
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final ApiClient apiClient; // ← accept it
+  const MyApp({super.key, required this.apiClient});
 
   @override
   Widget build(BuildContext context) {
-    final apiClient = ApiClient();
-
     return MultiProvider(
       providers: [
-        // Infrastructure for API calls
+        // Infrastructure
         Provider<ApiClient>(create: (_) => apiClient),
         Provider<AuthRepository>(create: (_) => AuthRepository(apiClient)),
         Provider<UserRepository>(create: (_) => UserRepository(apiClient)),
-        Provider<POIRepository>(create: (context) => POIRepository(apiClient)),
+        Provider<POIRepository>(create: (_) => POIRepository(apiClient)),
         Provider<NotificationRepository>(
           create: (_) => NotificationRepository(apiClient),
         ),
 
-        // Auth uses two repositories: user and authentication
+        // ── Move LocationProvider UP here, before AuthProvider ──
+        ChangeNotifierProvider(create: (_) => LocationProvider()),
+
+        // Auth — can now safely read LocationProvider
         ChangeNotifierProxyProvider2<
           AuthRepository,
           UserRepository,
           AuthProvider
         >(
-          create: (_) => AuthProvider(
+          create: (context) => AuthProvider(
             authRepository: AuthRepository(apiClient),
             userRepository: UserRepository(apiClient),
+            proximityService: ProximityService(
+              locationProvider: context
+                  .read<LocationProvider>(), // ← now available
+              notificationRepository: context.read<NotificationRepository>(),
+            ),
           ),
-          update: (_, authRepo, userRepo, previous) =>
+          update: (context, authRepo, userRepo, previous) =>
               previous ??
-              AuthProvider(authRepository: authRepo, userRepository: userRepo),
+              AuthProvider(
+                authRepository: authRepo,
+                userRepository: userRepo,
+                proximityService: ProximityService(
+                  locationProvider: context.read<LocationProvider>(),
+                  notificationRepository: context
+                      .read<NotificationRepository>(),
+                ),
+              ),
         ),
 
-        // Map & Location
+        // Map & Location — LocationProvider already registered above, don't add again
         ChangeNotifierProvider(
-          create: (context) => MapProvider(apiClient: apiClient),
+          create: (_) => MapProvider(apiClient: apiClient),
         ),
-        ChangeNotifierProvider(create: (_) => LocationProvider()),
+
         ChangeNotifierProxyProvider<POIRepository, POIProvider>(
           create: (_) => POIProvider(repository: POIRepository(apiClient)),
           update: (_, repo, previous) =>
               previous ?? POIProvider(repository: repo),
         ),
 
-        // Notification
-        ChangeNotifierProxyProvider<NotificationRepository, NotificationProvider>(
+        ChangeNotifierProxyProvider<
+          NotificationRepository,
+          NotificationProvider
+        >(
           create: (_) => NotificationProvider(
             repository: NotificationRepository(apiClient),
           ),
           update: (_, repo, previous) =>
               previous ?? NotificationProvider(repository: repo),
-        )
+        ),
       ],
       child: MaterialApp(
         title: 'RoadPaari',

@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 from app.model.notification import Notification
 from app.schemas.notif import NotificationCreate
+from datetime import datetime, timedelta
+from sqlalchemy import and_
 
 def create_notification(db: Session, data: NotificationCreate) -> Notification:
     notif = Notification(
@@ -46,3 +48,18 @@ def mark_all_read(db: Session, user_id: int) -> int:
     )
     db.commit()
     return updated
+
+def was_recently_notified(
+    db: Session,
+    user_id: int,
+    poi_id: int,
+    cooldown_hours: int = 24,
+) -> bool:
+    cutoff = datetime.utcnow() - timedelta(hours=cooldown_hours)
+    return db.query(Notification).filter(
+        and_(
+            Notification.user_id == user_id,
+            Notification.poi_id  == poi_id,
+            Notification.created_at >= cutoff,
+        )
+    ).first() is not None

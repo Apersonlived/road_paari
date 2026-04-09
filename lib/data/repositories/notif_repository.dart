@@ -12,7 +12,6 @@ class NotificationRepository {
     required double latitude,
     required double longitude,
     required double radiusMeters,
-    required String fcmToken,
   }) async {
     try {
       final response = await _apiClient.dio.post(
@@ -21,7 +20,6 @@ class NotificationRepository {
           'latitude': latitude,
           'longitude': longitude,
           'radius_meters': radiusMeters,
-          'fcm_token': fcmToken,
         },
       );
       return response.data as Map<String, dynamic>;

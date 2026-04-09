@@ -15,7 +15,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback-only-for-dev")
 
 # Password hashing
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def get_password_hash(password: str) -> str:
     password_bytes = password.encode('utf-8')[:72]  # truncate to 72 bytes

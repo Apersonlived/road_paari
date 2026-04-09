@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
 import '../data/repositories/notif_repository.dart';
@@ -30,7 +31,7 @@ class ProximityService {
     required NotificationRepository notificationRepository,
     NotificationService? notificationService,
     Duration interval = const Duration(seconds: 30),
-    this.alertRadiusMeters = 200,
+    this.alertRadiusMeters = 500,
   })  : _locationProvider = locationProvider,
         _notifRepo = notificationRepository,
         _notifService = notificationService ?? NotificationService.instance,
@@ -38,6 +39,7 @@ class ProximityService {
 
   /// Start periodic proximity polling.
   void start() {
+    debugPrint('=== ProximityService started ===');
     _timer?.cancel();
     _timer = Timer.periodic(_interval, (_) => _check());
   }
@@ -50,8 +52,11 @@ class ProximityService {
   debugPrint('ProximityService: location = $loc'); 
   if (loc == null) return;
 
-  final token = _notifService.fcmToken ?? 'no-token';
-
+final token = _notifService.fcmToken;
+if (token == null) {
+  debugPrint('ProximityService: no FCM token yet, skipping');
+  return;
+}
   // Reset dedup set when user has moved far enough away.
   if (_lastAlertedLocation != null) {
     final d = _haversine(loc, _lastAlertedLocation!);
@@ -64,8 +69,7 @@ class ProximityService {
     final result = await _notifRepo.proximityCheck(
       latitude: loc.latitude,
       longitude: loc.longitude,
-      radiusMeters: alertRadiusMeters,
-      fcmToken: token,
+      radiusMeters: alertRadiusMeters
     );
 
     debugPrint('ProximityService: API response = $result');
@@ -74,7 +78,7 @@ class ProximityService {
       final pois = result['nearby_pois'] as List;
       for (final poi in pois) {
         final id = poi['id'] as int;
-        if (_alertedPoiIds.contains(id)) continue; // already shown
+        if (_alertedPoiIds.contains(id)) continue; // already shown POIs
         _alertedPoiIds.add(id);
         _lastAlertedLocation = loc;
 
@@ -94,17 +98,15 @@ class ProximityService {
 
   /// Haversine distance in metres between two GeoPoints.
   double _haversine(GeoPoint a, GeoPoint b) {
-    const R = 6371000.0;
-    final dLat = _rad(b.latitude - a.latitude);
-    final dLon = _rad(b.longitude - a.longitude);
-    final sinLat = 0.5 - (_cos(_rad(a.latitude)) *
-        _cos(_rad(b.latitude)) *
-        (1 - _cos(dLon)) / 2);
-    return R * 2 * _asin(sinLat + (1 - _cos(dLat)) / 2);
-  }
+  const R = 6371000.0;
+  final phi1 = a.latitude  * pi / 180;
+  final phi2 = b.latitude  * pi / 180;
+  final dPhi = (b.latitude  - a.latitude)  * pi / 180;
+  final dLam = (b.longitude - a.longitude) * pi / 180;
 
-  static double _rad(double d) => d * 3.141592653589793 / 180;
-  static double _cos(double r) => double.parse(
-      (r == 0 ? 1.0 : 1 - r * r / 2 + r * r * r * r / 24).toStringAsFixed(10));
-  static double _asin(double x) => x; // small angle — accurate enough for dedup
+  final x = sin(dPhi / 2) * sin(dPhi / 2) +
+      cos(phi1) * cos(phi2) * sin(dLam / 2) * sin(dLam / 2);
+
+  return R * 2 * atan2(sqrt(x), sqrt(1 - x));
+}
 }

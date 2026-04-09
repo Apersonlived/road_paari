@@ -27,10 +27,17 @@ class ProximityCheckRequest(BaseModel):
     # Check if it's near any POI
     latitude: float
     longitude: float
-    radius_meters: float = 1000 # alert radius
-    fcm_token: str # device FCM token to push to
+    radius_meters: float = 500 # alert radius
 
 
 class ProximityCheckResponse(BaseModel):
     triggered: bool
     nearby_pois: list[dict]  # contains the name of poi & distance from device
+   
+    
+class FCMTokenUpdate(BaseModel):
+    fcm_token: str
+    
+    
+class UnreadCountResponse(BaseModel):
+    unread_count: int

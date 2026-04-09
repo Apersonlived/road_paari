@@ -147,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Edit'),
+                child: Text('Log out', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -492,7 +492,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text('Save'),
+                      child: const Text('Save', style: TextStyle(
+                          fontSize: 12, color:Colors.white)),
                     ),
                   ),
                 ],
@@ -591,7 +592,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text('Update'),
+                      child: const Text('Update', style: TextStyle(
+                          fontSize: 12, color:Colors.white)),
                     ),
                   ),
                 ],
