@@ -4,6 +4,7 @@ import '../../presentation/screens/auth/signup_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
 import '../../presentation/screens/poi/explore.dart';
 import '../../presentation/screens/poi/update.dart';
+import '../../presentation/screens/profile/admin_users.dart';
 import '../../presentation/screens/profile/profile.dart';
 
 class AppRoutes {
@@ -13,6 +14,7 @@ class AppRoutes {
   static const String explore = '/explore';
   static const String updates = '/updates';
   static const String profile = '/profile';
+  static const String adminUsers = '/admin/users';
 
   static Map<String, WidgetBuilder> routes = {
     login: (context) => const LoginScreen(),
@@ -20,6 +22,7 @@ class AppRoutes {
     map: (context) => const MapScreen(),
     updates: (context) => const UpdatesScreen(),
     profile: (context) => const ProfileScreen(),
-    explore: (context) => const ExploreScreen()
+    explore: (context) => const ExploreScreen(),
+    adminUsers: (context) => const AdminUsersScreen(),
   };
 }

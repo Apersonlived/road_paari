@@ -22,7 +22,6 @@ class POIDetailScreen extends StatelessWidget {
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
         slivers: [
-          // ── Hero image / app bar ─────────────────────────────────────────
           SliverAppBar(
             expandedHeight: 280,
             pinned: true,

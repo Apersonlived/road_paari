@@ -19,12 +19,12 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as int,
+      id: int.parse(json['id'].toString()),
       email: json['email'] as String,
       fullName: json['full_name'] as String?,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
-      isAdmin: json['is_admin'] as bool? ?? true,
+      isAdmin: json['is_admin'] as bool? ?? false,
       image: json['user_image_url'] as String?
     );
   }

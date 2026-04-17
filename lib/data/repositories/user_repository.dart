@@ -12,7 +12,7 @@ class UserRepository {
   Future<List<User>> getAllUsers({int skip = 0, int limit = 100}) async {
     try {
       final response = await _apiClient.dio.get(
-        '/users/',
+        '/users',
         queryParameters: {'skip': skip, 'limit': limit},
       );
 

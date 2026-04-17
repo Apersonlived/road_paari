@@ -11,9 +11,14 @@ class MapProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   List<NearestStop> _nearbyStops = [];
+  double get totalFare => _currentJourney?.totalFareNrs ?? 0.0;
+  String get formattedTotalFare =>
+      _currentJourney?.formattedTotalFare ?? 'Nrs. 0';
+  String get formattedTotalDistance =>
+      _currentJourney?.formattedTotalDistance ?? '';
 
   MapProvider({required ApiClient apiClient})
-      : _routingRepository = RoutingRepository(apiClient.dio);
+    : _routingRepository = RoutingRepository(apiClient.dio);
 
   // ── Getters ────────────────────────────────────────────────────────────────
   CompleteJourney? get currentJourney => _currentJourney;
@@ -41,42 +46,46 @@ class MapProvider extends ChangeNotifier {
 
   // ── Plan Journey ───────────────────────────────────────────────────────────
   Future<CompleteJourney?> planJourney({
-  required double startLat,
-  required double startLng,
-  required double endLat,
-  required double endLng,
-  int maxWalkDistance = 500,
-}) async {
-  if (startLat < -90 || startLat > 90 ||
-        endLat < -90 || endLat > 90 ||
-        startLng < -180 || startLng > 180 ||
-        endLng < -180 || endLng > 180) {
+    required double startLat,
+    required double startLng,
+    required double endLat,
+    required double endLng,
+    int maxWalkDistance = 500,
+  }) async {
+    if (startLat < -90 ||
+        startLat > 90 ||
+        endLat < -90 ||
+        endLat > 90 ||
+        startLng < -180 ||
+        startLng > 180 ||
+        endLng < -180 ||
+        endLng > 180) {
       setError('Invalid coordinates');
       return null;
     }
-  try {
-    setLoading(true);
-    setError(null);
-    final journey = await _routingRepository.planJourney(
-      startLat: startLat,
-      startLng: startLng,
-      endLat: endLat,
-      endLng: endLng,
-      maxWalkDistance: maxWalkDistance,
-    );
-    _currentJourney = journey;
-    if (journey == null) setError('No routes found');
-    setLoading(false);
-    notifyListeners();
-    return journey;
-  } catch (e) {
-    setError('Error planning trip: $e');
-    _currentJourney = null;
-    setLoading(false);
-    notifyListeners();
-    return null;
+    try {
+      setLoading(true);
+      setError(null);
+      final journey = await _routingRepository.planJourney(
+        startLat: startLat,
+        startLng: startLng,
+        endLat: endLat,
+        endLng: endLng,
+        maxWalkDistance: maxWalkDistance,
+      );
+      _currentJourney = journey;
+      if (journey == null) setError('No routes found');
+      setLoading(false);
+      notifyListeners();
+      return journey;
+    } catch (e) {
+      setError('Error planning trip: $e');
+      _currentJourney = null;
+      setLoading(false);
+      notifyListeners();
+      return null;
+    }
   }
-}
 
   // ── Route Details ──────────────────────────────────────────────────────────
   Future<RouteDetails?> loadRouteDetails({

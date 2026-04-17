@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
 import 'services/proximity_service.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
@@ -60,6 +61,14 @@ class MyApp extends StatelessWidget {
                       .read<NotificationRepository>(),
                 ),
               ),
+        ),
+
+        // User Provider
+        ChangeNotifierProvider(
+          create: (context) => UserProvider(
+            userRepository: context.read<UserRepository>(),
+            // or however you provide your UserRepository
+          ),
         ),
 
         // Map & Location — LocationProvider already registered above, don't add again

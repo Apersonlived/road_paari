@@ -9,7 +9,7 @@ class User(Base):
     email = Column(String(150), unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean)
+    is_admin = Column(Boolean, default=False)
     user_image_url = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     fcm_token = Column(String(255))

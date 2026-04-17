@@ -33,7 +33,7 @@ app.include_router(
     tags=["routing"]
 )
 
-app.include_router(user_router)
+app.include_router(user_router, prefix="/users", tags=["users"])
 
 app.include_router(poi.router, prefix="/poi", tags=["poi"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

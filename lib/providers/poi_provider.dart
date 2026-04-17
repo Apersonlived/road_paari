@@ -51,6 +51,17 @@ class POIProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> loadPOIById(int poiId) async {
+  try {
+    final poi = await _repository.getPOIById(poiId);
+    _selectedPoi = poi;
+    notifyListeners();
+  } catch (e) {
+    _error = e.toString();
+    notifyListeners();
+  }
+}
+
   // Load Categories
   Future<void> loadCategories() async {
     try {

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:road_paari/presentation/widgets/poi_detail.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
+import '../../../data/models/poi_model.dart';
 import '../../../providers/notification_provider.dart';
+import '../../../providers/poi_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
 class UpdatesScreen extends StatefulWidget {
@@ -40,6 +43,31 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     }
   }
 
+  void _confirmClearAll(BuildContext context, NotificationProvider provider) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Clear all notifications'),
+        content: const Text(
+          'This will permanently delete all notifications. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              provider.deleteAllNotifications();
+            },
+            child: const Text('Clear all', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,10 +95,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                         SizedBox(height: 2),
                         Text(
                           'Nearby place alerts',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -78,8 +103,9 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   // Mark all read button
                   Consumer<NotificationProvider>(
                     builder: (context, provider, _) {
-                      final hasUnread =
-                          provider.notifications.any((n) => !n.isRead);
+                      final hasUnread = provider.notifications.any(
+                        (n) => !n.isRead,
+                      );
                       if (!hasUnread) return const SizedBox.shrink();
                       return TextButton(
                         onPressed: provider.isLoading
@@ -95,12 +121,45 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 ],
               ),
             ),
+            Consumer<NotificationProvider>(
+              builder: (context, provider, _) {
+                if (provider.notifications.isEmpty)
+                  return const SizedBox.shrink();
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Existing mark all read button
+                    if (provider.notifications.any((n) => !n.isRead))
+                      TextButton(
+                        onPressed: provider.isLoading
+                            ? null
+                            : provider.markAllRead,
+                        child: const Text(
+                          'Mark all read',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    // New clear all button
+                    TextButton(
+                      onPressed: provider.isLoading
+                          ? null
+                          : () => _confirmClearAll(context, provider),
+                      child: const Text(
+                        'Clear all',
+                        style: TextStyle(fontSize: 13, color: Colors.red),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
 
             // ── Unread badge summary ───────────────────────────────────────
             Consumer<NotificationProvider>(
               builder: (context, provider, _) {
-                final unread =
-                    provider.notifications.where((n) => !n.isRead).length;
+                final unread = provider.notifications
+                    .where((n) => !n.isRead)
+                    .length;
                 if (unread == 0) return const SizedBox.shrink();
                 return Container(
                   color: Colors.white,
@@ -109,7 +168,9 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -139,13 +200,17 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   }
 
                   // Error
-                  if (provider.error != null && provider.notifications.isEmpty) {
+                  if (provider.error != null &&
+                      provider.notifications.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline,
-                              size: 48, color: Colors.red),
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red,
+                          ),
                           const SizedBox(height: 16),
                           Text(
                             provider.error!,
@@ -168,19 +233,20 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.notifications_none,
-                              size: 56, color: Colors.grey[400]),
+                          Icon(
+                            Icons.notifications_none,
+                            size: 56,
+                            color: Colors.grey[400],
+                          ),
                           const SizedBox(height: 16),
                           const Text(
                             'No notifications yet',
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 16),
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
                           ),
                           const SizedBox(height: 8),
                           const Text(
                             "You'll be alerted when you're near a place",
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 13),
+                            style: TextStyle(color: Colors.grey, fontSize: 13),
                             textAlign: TextAlign.center,
                           ),
                         ],
@@ -190,18 +256,56 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
 
                   // List
                   return RefreshIndicator(
-                    onRefresh: () =>
-                        provider.loadNotifications(refresh: true),
+                    onRefresh: () => provider.loadNotifications(refresh: true),
                     child: ListView.separated(
                       itemCount: provider.notifications.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
-                        final notif = provider.notifications[index];
-                        return _NotificationTile(
-                          notif: notif,
-                          onTap: () => provider.markAsRead(notif.id),
-                        );
-                      },
+  final notif = provider.notifications[index];
+  return Dismissible(
+    key: Key('notif_${notif.id}'),
+    direction: DismissDirection.endToStart,
+    background: Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: 20),
+      color: Colors.red,
+      child: const Icon(Icons.delete_outline, color: Colors.white),
+    ),
+    onDismissed: (_) => provider.deleteNotification(notif.id),
+    child: _NotificationTile(
+      notif: notif,
+      onTap: () async {
+        // Mark as read
+        if (!notif.isRead) provider.markAsRead(notif.id);
+
+        // Navigate to POI detail if poiId exists
+        if (notif.poiId != null) {
+          final poiProvider = context.read<POIProvider>();
+
+          // Try to find POI in already loaded list first
+          POI? poi = poiProvider.pois
+              .where((p) => p.id == notif.poiId)
+              .firstOrNull;
+
+          // If not loaded yet, fetch it
+          if (poi == null) {
+            await poiProvider.loadPOIById(notif.poiId!);
+            poi = poiProvider.selectedPoi;
+          }
+
+          if (poi != null && context.mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => POIDetailScreen(poi: poi!),
+              ),
+            );
+          }
+        }
+      },
+    ),
+  );
+},
                     ),
                   );
                 },
@@ -218,11 +322,10 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   }
 }
 
-
 // ── Notification tile ──────────────────────────────────────────────────────
 
 class _NotificationTile extends StatelessWidget {
-  final dynamic notif;   // AppNotification
+  final dynamic notif; // AppNotification
   final VoidCallback onTap;
 
   const _NotificationTile({required this.notif, required this.onTap});
@@ -304,10 +407,7 @@ class _NotificationTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     notif.message,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 5),
                   Text(

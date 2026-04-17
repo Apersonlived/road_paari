@@ -15,10 +15,10 @@ class AuthProvider with ChangeNotifier {
   AuthProvider({
     required AuthRepository authRepository,
     required UserRepository userRepository,
-    required ProximityService proximityService, 
-  })  : _authRepository = authRepository,
-        _userRepository = userRepository,
-        _proximityService = proximityService;
+    required ProximityService proximityService,
+  }) : _authRepository = authRepository,
+       _userRepository = userRepository,
+       _proximityService = proximityService;
 
   User? _currentUser;
   bool _isLoading = false;
@@ -129,6 +129,28 @@ class AuthProvider with ChangeNotifier {
       return false;
     } catch (e) {
       _setError('Failed to update profile.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    if (_currentUser == null) return false;
+    _setLoading(true);
+    _clearError();
+    try {
+      await _userRepository.deleteUser(_currentUser!.id);
+      await _authRepository.logout();
+      _proximityService.stop();
+      _currentUser = null;
+      _setLoading(false);
+      return true;
+    } on ApiException catch (e) {
+      _setError(e.message);
+      _setLoading(false);
+      return false;
+    } catch (_) {
+      _setError('Failed to delete account.');
       _setLoading(false);
       return false;
     }

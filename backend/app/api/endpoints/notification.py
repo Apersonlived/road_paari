@@ -111,3 +111,28 @@ def mark_all_read(
 ):
     count = notif_crud.mark_all_read(db, current_user.id)
     return {"marked_read": count}
+
+@router.delete("/clear-all", status_code=204)
+def delete_all_notifications(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).delete()
+    db.commit()
+
+@router.delete("/{notification_id}", status_code=204)
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    notif = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id, 
+    ).first()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    db.delete(notif)
+    db.commit()

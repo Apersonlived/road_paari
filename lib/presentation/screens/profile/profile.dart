@@ -103,9 +103,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Provider.of<AuthProvider>(context, listen: false).logout();
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(
-          context, AppRoutes.login, (route) => false);
+        context,
+        AppRoutes.login,
+        (route) => false,
+      );
     }
   }
+
+  Future<void> _deleteAccount() async {
+  final confirmed = await _showConfirmDialog(
+    title: 'Delete Account',
+    message:
+        'This will permanently delete your account and all associated data. This cannot be undone.',
+    confirmLabel: 'Delete',
+    confirmColor: Colors.red.shade800,
+  );
+  if (!confirmed || !mounted) return;
+  final auth = Provider.of<AuthProvider>(context, listen: false);
+  final success = await auth.deleteAccount();
+  if (!mounted) return;
+  if (success) {
+    Navigator.pushNamedAndRemoveUntil(
+        context, AppRoutes.login, (route) => false);
+  } else {
+    _showSnackBar(auth.errorMessage ?? 'Failed to delete account.');
+  }
+}
 
   void _cancelEdit() {
     _loadUserIntoFields();
@@ -114,12 +137,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showSnackBar(String message, {bool isError = true}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor:
-          isError ? Colors.red.shade700 : Colors.green.shade700,
-      duration: const Duration(seconds: 3),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<bool> _showConfirmDialog({
@@ -132,7 +156,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Text(title),
             content: Text(message),
             actions: [
@@ -144,10 +169,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: confirmColor,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Log out', style: TextStyle(color: Colors.white)),
+                child: Text(confirmLabel, style: const TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -193,9 +219,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          _isEditing
-                              ? _buildEditForm()
-                              : _buildInfoCard(user),
+                          _isEditing ? _buildEditForm() : _buildInfoCard(user),
                           const SizedBox(height: 16),
                           _isChangingPassword
                               ? _buildPasswordForm()
@@ -204,7 +228,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   label: 'Change Password',
                                   color: AppColors.primary,
                                   onTap: () => setState(
-                                      () => _isChangingPassword = true),
+                                    () => _isChangingPassword = true,
+                                  ),
                                 ),
                           const SizedBox(height: 12),
                           _buildStatusCard(user),
@@ -216,6 +241,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: _logout,
                           ),
                           const SizedBox(height: 100),
+                          const SizedBox(height: 12),
+                          _buildActionCard(
+                            icon: Icons.delete_forever_outlined,
+                            label: 'Delete Account',
+                            color: Colors.red.shade800,
+                            onTap: _deleteAccount,
+                          ),
+
+                          // If user is admin, add this after the delete card:
+                          if (auth.currentUser?.isAdmin == true) ...[
+                            const SizedBox(height: 12),
+                            _buildActionCard(
+                              icon: Icons.admin_panel_settings_outlined,
+                              label: 'Manage Users',
+                              color: Colors.purple,
+                              onTap: () => Navigator.pushNamed(
+                                context,
+                                AppRoutes.adminUsers,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -240,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Sliver App Bar 
+  // Sliver App Bar
   Widget _buildSliverAppBar(User user) {
     return SliverAppBar(
       expandedHeight: 230,
@@ -293,8 +339,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: Colors.white,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.edit,
-                              size: 16, color: AppColors.primary),
+                          child: Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                   ],
@@ -320,7 +369,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 3),
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
@@ -343,12 +394,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Info Card 
+  // Info Card
   Widget _buildInfoCard(User user) {
     return Card(
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -360,15 +410,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
                 const Text(
                   'Profile Information',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () => setState(() => _isEditing = true),
                   icon: Icon(Icons.edit, size: 16, color: AppColors.primary),
-                  label:
-                      Text('Edit', style: TextStyle(color: AppColors.primary)),
+                  label: Text(
+                    'Edit',
+                    style: TextStyle(color: AppColors.primary),
+                  ),
                 ),
               ],
             ),
@@ -410,13 +461,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style:
-                    TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            ),
             const SizedBox(height: 2),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w500)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
           ],
         ),
       ],
@@ -428,8 +481,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildEditForm() {
     return Card(
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -441,9 +493,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Icon(Icons.edit, color: AppColors.primary),
                   const SizedBox(width: 8),
-                  const Text('Edit Profile',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Edit Profile',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               const Divider(),
@@ -452,9 +505,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 controller: _nameController,
                 label: 'Full Name',
                 icon: Icons.badge_outlined,
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Name is required'
-                    : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Name is required' : null,
               ),
               const SizedBox(height: 16),
               _buildFormField(
@@ -477,7 +529,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Cancel'),
                     ),
@@ -490,10 +543,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         backgroundColor: AppColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                      child: const Text('Save', style: TextStyle(
-                          fontSize: 12, color:Colors.white)),
+                      child: const Text(
+                        'Save',
+                        style: TextStyle(fontSize: 12, color: Colors.white),
+                      ),
                     ),
                   ),
                 ],
@@ -509,8 +565,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildPasswordForm() {
     return Card(
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -522,9 +577,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Icon(Icons.lock_outline, color: AppColors.primary),
                   const SizedBox(width: 8),
-                  const Text('Change Password',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Change Password',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               const Divider(),
@@ -533,8 +589,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 controller: _oldPasswordController,
                 label: 'Current Password',
                 obscure: _obscureOld,
-                onToggle: () =>
-                    setState(() => _obscureOld = !_obscureOld),
+                onToggle: () => setState(() => _obscureOld = !_obscureOld),
                 validator: (v) => v == null || v.isEmpty
                     ? 'Enter your current password'
                     : null,
@@ -544,8 +599,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 controller: _newPasswordController,
                 label: 'New Password',
                 obscure: _obscureNew,
-                onToggle: () =>
-                    setState(() => _obscureNew = !_obscureNew),
+                onToggle: () => setState(() => _obscureNew = !_obscureNew),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Enter a new password';
                   if (v.length < 6) return 'Minimum 6 characters';
@@ -577,7 +631,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Cancel'),
                     ),
@@ -590,10 +645,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         backgroundColor: AppColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                      child: const Text('Update', style: TextStyle(
-                          fontSize: 12, color:Colors.white)),
+                      child: const Text(
+                        'Update',
+                        style: TextStyle(fontSize: 12, color: Colors.white),
+                      ),
                     ),
                   ),
                 ],
@@ -609,8 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatusCard(User user) {
     return Card(
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -620,9 +677,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Icon(Icons.shield_outlined, color: AppColors.primary),
                 const SizedBox(width: 8),
-                const Text('Account Status',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Account Status',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             const Divider(),
@@ -691,14 +749,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Card(
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Row(
             children: [
               Container(
@@ -777,13 +833,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon:
-            Icon(Icons.lock_outline, color: AppColors.primary),
+        prefixIcon: Icon(Icons.lock_outline, color: AppColors.primary),
         suffixIcon: IconButton(
           icon: Icon(
-            obscure
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
+            obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
             color: Colors.grey,
           ),
           onPressed: onToggle,
@@ -823,8 +876,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }

@@ -9,6 +9,8 @@ import '../../../data/models/routing_models.dart';
 import '../../../providers/map_provider.dart';
 import '../../../providers/location_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
+import '../../../providers/poi_provider.dart';
+import '../../../data/models/poi_model.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -18,7 +20,6 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // ── Controllers & Focus ───────────────────────────────────────────────────
   late MapController mapController;
   final TextEditingController _startLocationController =
       TextEditingController();
@@ -26,24 +27,19 @@ class _MapScreenState extends State<MapScreen> {
   final FocusNode _startFocus = FocusNode();
   final FocusNode _destFocus = FocusNode();
 
-  // ── Overlay & LayerLink ───────────────────────────────────────────────────
   final LayerLink _startLayerLink = LayerLink();
   final LayerLink _destLayerLink = LayerLink();
   OverlayEntry? _startOverlay;
   OverlayEntry? _destOverlay;
 
-  // ── Search State ──────────────────────────────────────────────────────────
   Timer? _searchDebounce;
   bool _isSearchingStart = false;
   bool _isSearchingDest = false;
 
-  // ── UI State ──────────────────────────────────────────────────────────────
   int _selectedIndex = 0;
   bool _isSearchExpanded = true;
   CompleteJourney? _currentJourney;
-  bool _showRouteDetails = false;
 
-  // ── Map Config ────────────────────────────────────────────────────────────
   final GeoPoint _kathmanduCenter = GeoPoint(
     latitude: 27.7172,
     longitude: 85.3240,
@@ -55,7 +51,8 @@ class _MapScreenState extends State<MapScreen> {
     west: 85.20,
   );
 
-  // ── Init & Dispose ────────────────────────────────────────────────────────
+  final Map<GeoPoint, POI> _poiMarkerMap = {};
+  bool _poisLoaded = false;
 
   @override
   void initState() {
@@ -64,7 +61,10 @@ class _MapScreenState extends State<MapScreen> {
       initPosition: _kathmanduCenter,
       areaLimit: _kathmanduBounds,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _setKathmanduView());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _setKathmanduView();
+      await _loadPOIMarkers();
+    });
   }
 
   @override
@@ -87,42 +87,56 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('Error setting Kathmandu view: $e');
     }
   }
+// 1. Define Dio at the class level to reuse the connection (prevents socket exhaustion)
+final Dio _dio = Dio(
+  BaseOptions(
+    connectTimeout: const Duration(seconds: 15), // Increased slightly
+    receiveTimeout: const Duration(seconds: 15),
+    headers: {
+      // Be very specific with the User-Agent
+      'User-Agent': 'RoadPaari_App_v1.0 (contact: roadpaari@gmail.com)',
+      'Accept-Language': 'en', // Helps Nominatim process the request faster
+    },
+  ),
+);
 
-  Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
-    try {
-      final dio = Dio(
-        BaseOptions(
-          baseUrl: 'https://nominatim.openstreetmap.org',
-          headers: {
-            'User-Agent': 'RoadPaari/1.0 (roadpaari@gmail.com)',
-            'Accept-Language': 'en',
-          },
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
-        ),
-      );
+Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
+  if (query.isEmpty) return [];
 
-      final response = await dio.get(
-        '/search',
-        queryParameters: {
-          'q': query,
-          'format': 'json',
-          'limit': 5,
-          'countrycodes': 'np',
-        },
-      );
+  try {
+    // 2. Use the full URL directly to avoid BaseUrl resolution issues
+    // and use 'search' with a trailing slash or .php to be more explicit
+    final response = await _dio.get(
+      'https://nominatim.openstreetmap.org/search',
+      queryParameters: {
+        'q': query,
+        'format': 'json',
+        'limit': 5,
+        'countrycodes': 'np', // Nepal filter
+        'addressdetails': 1,
+      },
+    );
 
-      debugPrint('Nominatim raw response: ${response.data}');
+    if (response.statusCode == 200) {
       return (response.data as List)
           .map((r) => _PlaceSuggestion.fromJson(r))
           .toList();
-    } catch (e) {
-      debugPrint('Nominatim error: $e');
-      return [];
     }
+    return [];
+  } on DioException catch (e) {
+    // 3. Specific logging to see exactly why it's timing out
+    if (e.type == DioExceptionType.connectionTimeout) {
+      debugPrint('Nominatim Timeout: Check your internet or if the IP is throttled');
+    } else {
+      debugPrint('Nominatim Dio Error: ${e.message}');
+    }
+    return [];
+  } catch (e) {
+    debugPrint('Nominatim General error: $e');
+    return [];
   }
+}
 
-  // ── Overlay Management ────────────────────────────────────────────────────
   void _showStartOverlay(List<_PlaceSuggestion> suggestions) {
     _removeStartOverlay();
     if (suggestions.isEmpty) return;
@@ -216,9 +230,72 @@ class _MapScreenState extends State<MapScreen> {
     _removeDestOverlay();
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  Future<void> _loadPOIMarkers() async {
+    if (_poisLoaded) return;
+    final poiProvider = Provider.of<POIProvider>(context, listen: false);
+
+    if (poiProvider.pois.isEmpty) {
+      await poiProvider.loadPOIs();
+    }
+
+    for (final poi in poiProvider.pois) {
+      if (poi.latitude == null || poi.longitude == null) continue;
+      final point = GeoPoint(
+        latitude: poi.latitude!,
+        longitude: poi.longitude!,
+      );
+      try {
+        await mapController.addMarker(
+          point,
+          markerIcon: MarkerIcon(
+            iconWidget: SizedBox(
+              width: 80,
+              height: 60,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      poi.name,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.location_on, color: Colors.blue, size: 28),
+                ],
+              ),
+            ),
+          ),
+        );
+        _poiMarkerMap[point] = poi;
+      } catch (e) {
+        debugPrint('Error adding POI marker: $e');
+      }
+    }
+    _poisLoaded = true;
+  }
+
   void _onStartChanged(String value) {
-    debugPrint('Search triggered: "$value" length=${value.length}');
     _searchDebounce?.cancel();
     if (value.length < 3) {
       _removeStartOverlay();
@@ -228,8 +305,7 @@ class _MapScreenState extends State<MapScreen> {
       if (!mounted) return;
       setState(() => _isSearchingStart = true);
       try {
-        final results = await _searchPlaces(value);
-        debugPrint('Start results: ${results.length}');
+        var results = await _searchPlaces(value);
         if (mounted) _showStartOverlay(results);
       } finally {
         if (mounted) setState(() => _isSearchingStart = false);
@@ -247,8 +323,7 @@ class _MapScreenState extends State<MapScreen> {
       if (!mounted) return;
       setState(() => _isSearchingDest = true);
       try {
-        final results = await _searchPlaces(value);
-        debugPrint('Dest results: ${results.length}');
+        var results = await _searchPlaces(value);
         if (mounted) _showDestOverlay(results);
       } finally {
         if (mounted) setState(() => _isSearchingDest = false);
@@ -256,7 +331,6 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
-  // ── Select Suggestions ────────────────────────────────────────────────────
   Future<void> _selectStartSuggestion(_PlaceSuggestion suggestion) async {
     _removeAllOverlays();
     final locationProvider = Provider.of<LocationProvider>(
@@ -295,7 +369,6 @@ class _MapScreenState extends State<MapScreen> {
     if (locationProvider.startLocation != null) await _calculateRoute();
   }
 
-  // ── Route Calculation ─────────────────────────────────────────────────────
   Future<void> _calculateRoute() async {
     final locationProvider = Provider.of<LocationProvider>(
       context,
@@ -310,24 +383,22 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     try {
-      setState(() => _showRouteDetails = false);
       await mapController.clearAllRoads();
 
-      final journey = await mapProvider.planJourney(
+      var journey = await mapProvider.planJourney(
         startLat: locationProvider.startLocation!.latitude,
         startLng: locationProvider.startLocation!.longitude,
         endLat: locationProvider.destinationLocation!.latitude,
         endLng: locationProvider.destinationLocation!.longitude,
       );
 
-      if (journey == null) {
-        _showSnackBar('No routes found between the selected stops.');
+      if (journey == null || journey.errorMessage != null) {
+        _showSnackBar(journey?.errorMessage ?? 'No routes found');
         return;
       }
 
       setState(() {
         _currentJourney = journey;
-        _showRouteDetails = true;
         _isSearchExpanded = false;
       });
 
@@ -337,449 +408,77 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ── Draw Journey ──────────────────────────────────────────────────────────
-Future<void> _drawJourneyOnMap(CompleteJourney journey) async {
-  // Only draw walking segments and stop markers on initial journey load.
-  // Bus route geometry is drawn only when user taps a specific route tile.
+  Future<void> _drawJourneyOnMap(CompleteJourney journey) async {
+    await mapController.clearAllRoads();
 
-  if (journey.walkingToStart?.isNotEmpty ?? false) {
-    final walkPoints = journey.walkingToStart!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
+    for (var leg in journey.journeyLegs) {
+      if (leg.legType == 'walk' &&
+          leg.segments != null &&
+          leg.segments!.isNotEmpty) {
+        var walkPoints = leg.segments!
+            .expand((w) => w.coordinates)
+            .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
+            .toList();
+
+        if (walkPoints.isNotEmpty) {
+          await mapController.drawRoadManually(
+            walkPoints,
+            RoadOption(roadWidth: 5, roadColor: Colors.orange, zoomInto: false),
+          );
+        }
+      }
+    }
+
+    if (journey.closestStartStop != null) {
+      await mapController.addMarker(
+        GeoPoint(
+          latitude: journey.closestStartStop!.latitude,
+          longitude: journey.closestStartStop!.longitude,
+        ),
+        markerIcon: MarkerIcon(
+          icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
+        ),
+      );
+    }
+
+    if (journey.closestEndStop != null) {
+      await mapController.addMarker(
+        GeoPoint(
+          latitude: journey.closestEndStop!.latitude,
+          longitude: journey.closestEndStop!.longitude,
+        ),
+        markerIcon: MarkerIcon(
+          icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
+        ),
+      );
+    }
+
+    if (journey.closestStartStop != null) {
+      await mapController.moveTo(
+        GeoPoint(
+          latitude: journey.closestStartStop!.latitude,
+          longitude: journey.closestStartStop!.longitude,
+        ),
       );
     }
   }
 
-  if (journey.walkingFromEnd?.isNotEmpty ?? false) {
-    final walkPoints = journey.walkingFromEnd!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-      );
-    }
-  }
-
-  if (journey.closestStartStop != null) {
+  Future<void> _zoomToLocation(double lat, double lng) async {
+    if (lat == 0 && lng == 0) return;
+    var point = GeoPoint(latitude: lat, longitude: lng);
+    await mapController.moveTo(point, animate: true);
+    await mapController.setZoom(zoomLevel: 17);
     await mapController.addMarker(
-      GeoPoint(
-        latitude: journey.closestStartStop!.latitude,
-        longitude: journey.closestStartStop!.longitude,
-      ),
+      point,
       markerIcon: MarkerIcon(
-        icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
+        icon: const Icon(Icons.location_on, color: Colors.blue, size: 50),
       ),
     );
   }
 
-  if (journey.closestEndStop != null) {
-    await mapController.addMarker(
-      GeoPoint(
-        latitude: journey.closestEndStop!.latitude,
-        longitude: journey.closestEndStop!.longitude,
-      ),
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
-      ),
-    );
-  }
-
-  // Zoom to board stop
-  if (journey.closestStartStop != null) {
-    await mapController.moveTo(GeoPoint(
-      latitude: journey.closestStartStop!.latitude,
-      longitude: journey.closestStartStop!.longitude,
-    ));
-  }
-}
-
-// ── Called when user taps a route tile ───────────────────────────────────
-Future<void> _loadAndDrawRoute(BusRoute route) async {
-  final mapProvider = Provider.of<MapProvider>(context, listen: false);
-
-  if (_currentJourney == null) return;
-
-  final details = await mapProvider.loadRouteDetails(
-    routeId: route.routeId,
-    startStopId: _currentJourney!.closestStartStop?.stopId,
-    endStopId: _currentJourney!.closestEndStop?.stopId,
-  );
-
-  debugPrint('Flat coordinates count: ${details?.flatCoordinates.length}');
-
-  if (details == null) {
-    _showSnackBar('Could not load route geometry');
-    return;
-  }
-
-  // Clear all existing roads and markers
-  await mapController.clearAllRoads();
-
-  // Remove all previously added markers
-  final pointsToRemove = <GeoPoint>[];
-  final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-
-  if (locationProvider.startLocation != null) {
-    pointsToRemove.add(locationProvider.startLocation!);
-  }
-  if (locationProvider.destinationLocation != null) {
-    pointsToRemove.add(locationProvider.destinationLocation!);
-  }
-  if (_currentJourney!.closestStartStop != null) {
-    pointsToRemove.add(GeoPoint(
-      latitude: _currentJourney!.closestStartStop!.latitude,
-      longitude: _currentJourney!.closestStartStop!.longitude,
-    ));
-  }
-  if (_currentJourney!.closestEndStop != null) {
-    pointsToRemove.add(GeoPoint(
-      latitude: _currentJourney!.closestEndStop!.latitude,
-      longitude: _currentJourney!.closestEndStop!.longitude,
-    ));
-  }
-  for (final point in pointsToRemove) {
-    try { await mapController.removeMarker(point); } catch (_) {}
-  }
-
-  // ── 1. Walking to first stop (orange) ────────────────────────────────────
-  if (_currentJourney!.walkingToStart?.isNotEmpty ?? false) {
-    final walkPoints = _currentJourney!.walkingToStart!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-      );
-    }
-  }
-
-  // ── 2. Bus route geometry (thick, primary color) ──────────────────────────
-  final busPoints = details.flatCoordinates
-      .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-      .toList();
-
-  if (busPoints.isNotEmpty) {
-    await mapController.drawRoadManually(
-      busPoints,
-      RoadOption(
-        roadWidth: 8,
-        roadColor: AppColors.primary,
-        zoomInto: true,
-      ),
-    );
-  } else {
-    _showSnackBar('No geometry available for this route');
-  }
-
-  // ── 3. Walking from last stop (orange) ────────────────────────────────────
-  if (_currentJourney!.walkingFromEnd?.isNotEmpty ?? false) {
-    final walkPoints = _currentJourney!.walkingFromEnd!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-      );
-    }
-  }
-
-  // ── 4. Re-add start/destination markers ───────────────────────────────────
-  if (locationProvider.startLocation != null) {
-    await mapController.addMarker(
-      locationProvider.startLocation!,
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.location_on, color: Colors.green, size: 48),
-      ),
-    );
-  }
-  if (locationProvider.destinationLocation != null) {
-    await mapController.addMarker(
-      locationProvider.destinationLocation!,
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.flag, color: Colors.red, size: 48),
-      ),
-    );
-  }
-
-  // ── 5. Board and alight stop markers ─────────────────────────────────────
-  if (_currentJourney!.closestStartStop != null) {
-    await mapController.addMarker(
-      GeoPoint(
-        latitude: _currentJourney!.closestStartStop!.latitude,
-        longitude: _currentJourney!.closestStartStop!.longitude,
-      ),
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40),
-      ),
-    );
-  }
-  if (_currentJourney!.closestEndStop != null) {
-    await mapController.addMarker(
-      GeoPoint(
-        latitude: _currentJourney!.closestEndStop!.latitude,
-        longitude: _currentJourney!.closestEndStop!.longitude,
-      ),
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40),
-      ),
-    );
-  }
-}
-
-// ── inside _MapScreenState class ─────────────────────────────────────────
-
-Future<void> _loadAndDrawTransferRoute(TransferRoute transfer) async {
-  final mapProvider = Provider.of<MapProvider>(context, listen: false);
-  final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-
-  if (_currentJourney == null) return;
-
-  // Load both route geometries
-  final firstDetails = await mapProvider.loadRouteDetails(
-    routeId: transfer.firstRouteId,
-    startStopId: _currentJourney!.closestStartStop?.stopId,
-    endStopId: transfer.transferStopId,
-  );
-
-  final secondDetails = await mapProvider.loadRouteDetails(
-    routeId: transfer.secondRouteId,
-    startStopId: transfer.transferStopId,
-    endStopId: _currentJourney!.closestEndStop?.stopId,
-  );
-
-  if (firstDetails == null && secondDetails == null) {
-    _showSnackBar('Could not load transfer route geometry');
-    return;
-  }
-
-  // Clear everything
-  await mapController.clearAllRoads();
-  final pointsToRemove = <GeoPoint>[];
-  if (locationProvider.startLocation != null) pointsToRemove.add(locationProvider.startLocation!);
-  if (locationProvider.destinationLocation != null) pointsToRemove.add(locationProvider.destinationLocation!);
-  if (_currentJourney!.closestStartStop != null) {
-    pointsToRemove.add(GeoPoint(
-      latitude: _currentJourney!.closestStartStop!.latitude,
-      longitude: _currentJourney!.closestStartStop!.longitude,
-    ));
-  }
-  if (_currentJourney!.closestEndStop != null) {
-    pointsToRemove.add(GeoPoint(
-      latitude: _currentJourney!.closestEndStop!.latitude,
-      longitude: _currentJourney!.closestEndStop!.longitude,
-    ));
-  }
-  for (final point in pointsToRemove) {
-    try { await mapController.removeMarker(point); } catch (_) {}
-  }
-
-  // ── 1. Walking to first stop ──────────────────────────────────────────
-  if (_currentJourney!.walkingToStart?.isNotEmpty ?? false) {
-    final walkPoints = _currentJourney!.walkingToStart!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-      );
-    }
-  }
-
-  // ── 2. First bus leg (primary color) ─────────────────────────────────
-  if (firstDetails != null) {
-    final busPoints = firstDetails.flatCoordinates
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (busPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        busPoints,
-        RoadOption(roadWidth: 8, roadColor: AppColors.primary, zoomInto: true),
-      );
-    }
-  }
-
-  // ── 3. Transfer walk marker ───────────────────────────────────────────
-  // Look up transfer stop coordinates from nearestStops or use a fixed lookup
-  final transferStopPoint = _findStopPoint(transfer.transferStopId);
-  if (transferStopPoint != null) {
-    await mapController.addMarker(
-      transferStopPoint,
-      markerIcon: MarkerIcon(
-        icon: const Icon(Icons.sync_alt, color: Colors.orange, size: 40),
-      ),
-    );
-  }
-
-  // ── 4. Second bus leg (slightly different shade) ──────────────────────
-  if (secondDetails != null) {
-    final busPoints = secondDetails.flatCoordinates
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (busPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        busPoints,
-        RoadOption(roadWidth: 8, roadColor: Colors.teal, zoomInto: false),
-      );
-    }
-  }
-
-  // ── 5. Walking from last stop ─────────────────────────────────────────
-  if (_currentJourney!.walkingFromEnd?.isNotEmpty ?? false) {
-    final walkPoints = _currentJourney!.walkingFromEnd!
-        .expand((w) => w.coordinates)
-        .map((c) => GeoPoint(latitude: c[0], longitude: c[1]))
-        .toList();
-    if (walkPoints.isNotEmpty) {
-      await mapController.drawRoadManually(
-        walkPoints,
-        RoadOption(roadWidth: 4, roadColor: Colors.orange, zoomInto: false),
-      );
-    }
-  }
-
-  // ── 6. Re-add all markers ─────────────────────────────────────────────
-  if (locationProvider.startLocation != null) {
-    await mapController.addMarker(locationProvider.startLocation!,
-      markerIcon: MarkerIcon(icon: const Icon(Icons.location_on, color: Colors.green, size: 48)));
-  }
-  if (locationProvider.destinationLocation != null) {
-    await mapController.addMarker(locationProvider.destinationLocation!,
-      markerIcon: MarkerIcon(icon: const Icon(Icons.flag, color: Colors.red, size: 48)));
-  }
-  if (_currentJourney!.closestStartStop != null) {
-    await mapController.addMarker(
-      GeoPoint(latitude: _currentJourney!.closestStartStop!.latitude,
-               longitude: _currentJourney!.closestStartStop!.longitude),
-      markerIcon: MarkerIcon(icon: const Icon(Icons.directions_bus, color: Colors.green, size: 40)),
-    );
-  }
-  if (_currentJourney!.closestEndStop != null) {
-    await mapController.addMarker(
-      GeoPoint(latitude: _currentJourney!.closestEndStop!.latitude,
-               longitude: _currentJourney!.closestEndStop!.longitude),
-      markerIcon: MarkerIcon(icon: const Icon(Icons.directions_bus, color: Colors.red, size: 40)),
-    );
-  }
-}
-
-// Helper to find a stop's GeoPoint from journey data
-GeoPoint? _findStopPoint(int stopId) {
-  final allStops = [
-    ...(_currentJourney?.nearestStartStops ?? []),
-    ...(_currentJourney?.nearestEndStops ?? []),
-  ];
-  try {
-    final stop = allStops.firstWhere((s) => s.stopId == stopId);
-    return GeoPoint(latitude: stop.latitude, longitude: stop.longitude);
-  } catch (_) {
-    return null;
-  }
-}
-
-Widget _buildTransferRouteTile(TransferRoute transfer) {
-  return InkWell(                          // ← make it tappable
-    onTap: () => _loadAndDrawTransferRoute(transfer),
-    borderRadius: BorderRadius.circular(8),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // First leg
-          Row(
-            children: [
-              Icon(Icons.directions_bus, color: AppColors.primary, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(transfer.firstRouteName,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              ),
-            ],
-          ),
-          // Transfer point
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-            child: Row(
-              children: [
-                const Icon(Icons.sync_alt, color: Colors.orange, size: 14),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Transfer at: ${transfer.transferStopName ?? 'Stop #${transfer.transferStopId}'}',
-                    style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
-                  ),
-                ),
-                if (transfer.transferWalkMeters != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      transfer.transferWalkMeters! < 1000
-                          ? '${transfer.transferWalkMeters!.toStringAsFixed(0)}m walk'
-                          : '${(transfer.transferWalkMeters! / 1000).toStringAsFixed(1)}km walk',
-                      style: TextStyle(fontSize: 10, color: Colors.orange.shade800,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // Second leg
-          Row(
-            children: [
-              const Icon(Icons.directions_bus, color: Colors.teal, size: 16), // ← teal to match map
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(transfer.secondRouteName,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              ),
-              if (transfer.totalDistanceMeters != null)
-                Text(transfer.formattedTotalDistance,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            ],
-          ),
-          // Tap hint
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text('Tap to view on map',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
-              Icon(Icons.chevron_right, size: 14, color: Colors.grey.shade400),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-  // ── Current Location ──────────────────────────────────────────────────────
   Future<void> _getCurrentLocation() async {
     try {
-      final currentPosition = await mapController.myLocation();
+      var currentPosition = await mapController.myLocation();
       await mapController.moveTo(currentPosition);
 
       final locationProvider = Provider.of<LocationProvider>(
@@ -802,25 +501,21 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
     }
   }
 
-  // ── Clear Route ───────────────────────────────────────────────────────────
   Future<void> _clearRoute() async {
     _removeAllOverlays();
     _searchDebounce?.cancel();
     await mapController.clearAllRoads();
-    await mapController.removeMarkers([]); // ← doesn't work for all, use below
+    await mapController.removeMarkers([]);
 
-    // Remove start/destination markers explicitly
     final locationProvider = Provider.of<LocationProvider>(
       context,
       listen: false,
     );
-    if (locationProvider.startLocation != null) {
+    if (locationProvider.startLocation != null)
       await mapController.removeMarker(locationProvider.startLocation!);
-    }
-    if (locationProvider.destinationLocation != null) {
+    if (locationProvider.destinationLocation != null)
       await mapController.removeMarker(locationProvider.destinationLocation!);
-    }
-    // Remove stop markers
+
     if (_currentJourney?.closestStartStop != null) {
       await mapController.removeMarker(
         GeoPoint(
@@ -838,21 +533,22 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
       );
     }
 
-    Provider.of<LocationProvider>(context, listen: false).clearLocations();
+    locationProvider.clearLocations();
     Provider.of<MapProvider>(context, listen: false).clearRoute();
+
     setState(() {
       _currentJourney = null;
-      _showRouteDetails = false;
+      _isSearchExpanded = true;
     });
+
     _startLocationController.clear();
     _destinationController.clear();
 
-    // Re-center map
     await mapController.moveTo(_kathmanduCenter);
     await mapController.setZoom(zoomLevel: 13);
+    _poisLoaded = false;
+    await _loadPOIMarkers();
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _showSnackBar(String message) {
     if (!mounted) return;
@@ -876,17 +572,21 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
+  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
+      // ← Move journey panel here instead of inside Stack
+      bottomSheet: _currentJourney != null ? _buildJourneySheet() : null,
       body: Stack(
         children: [
-          // ── Map ────────────────────────────────────────────────────────────
           OSMFlutter(
             controller: mapController,
+            onGeoPointClicked: (point) {
+              final poi = _poiMarkerMap[point];
+              if (poi != null) _showPOIDetail(poi);
+            },
             osmOption: OSMOption(
               userTrackingOption: UserTrackingOption(
                 enableTracking: true,
@@ -914,7 +614,7 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
             ),
           ),
 
-          // ── Search Panel ───────────────────────────────────────────────────
+          // Search card
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
@@ -931,7 +631,6 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Collapsed state
                       if (!_isSearchExpanded)
                         ElevatedButton.icon(
                           onPressed: () =>
@@ -953,8 +652,6 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                             ),
                           ),
                         ),
-
-                      // Expanded state
                       if (_isSearchExpanded) ...[
                         Row(
                           children: [
@@ -968,17 +665,13 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                               ),
                             ),
                             IconButton(
-                              onPressed: () {
-                                _removeAllOverlays();
-                                setState(() => _isSearchExpanded = false);
-                              },
+                              onPressed: () =>
+                                  setState(() => _isSearchExpanded = false),
                               icon: const Icon(Icons.close),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-
-                        // Start field
                         CompositedTransformTarget(
                           link: _startLayerLink,
                           child: TextField(
@@ -994,11 +687,8 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(12),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
                                     )
                                   : _startLocationController.text.isNotEmpty
@@ -1029,8 +719,6 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Destination field
                         CompositedTransformTarget(
                           link: _destLayerLink,
                           child: TextField(
@@ -1046,11 +734,8 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(12),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
                                     )
                                   : _destinationController.text.isNotEmpty
@@ -1081,7 +766,6 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
                           ),
                         ),
                         const SizedBox(height: 12),
-
                         ElevatedButton.icon(
                           onPressed: _calculateRoute,
                           icon: const Icon(Icons.directions),
@@ -1109,248 +793,49 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
             ),
           ),
 
-          // ── Route Details Panel ────────────────────────────────────────────
-          if (_showRouteDetails && _currentJourney != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 100,
-              child: Material(
-                color: Colors.transparent,
-                child: Card(
-                  margin: const EdgeInsets.all(16),
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.70,
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Header
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Route Details',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const Spacer(),
-                              IconButton(
-                                onPressed: () =>
-                                    setState(() => _showRouteDetails = false),
-                                icon: const Icon(Icons.close),
-                                constraints: const BoxConstraints(),
-                                padding: EdgeInsets.zero,
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-
-                          // Summary chips
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildInfoChip(
-                                icon: Icons.directions_bus,
-                                label:
-                                    '${_currentJourney!.directRoutes.length} route(s)',
-                                color: AppColors.primary,
-                              ),
-                              if (_currentJourney!.hasWalkingSegments)
-                                _buildInfoChip(
-                                  icon: Icons.directions_walk,
-                                  label:
-                                      _currentJourney!.formattedWalkingDistance,
-                                  color: Colors.orange,
-                                ),
-                            ],
-                          ),
-
-                          // Stop info
-                          if (_currentJourney!.closestStartStop != null ||
-                              _currentJourney!.closestEndStop != null) ...[
-                            const SizedBox(height: 12),
-                            _buildStopRow(
-                              icon: Icons.trip_origin,
-                              color: Colors.green,
-                              label: 'Board at',
-                              stop: _currentJourney!.closestStartStop,
-                            ),
-                            const SizedBox(height: 6),
-                            _buildStopRow(
-                              icon: Icons.location_on,
-                              color: Colors.red,
-                              label: 'Arrive at',
-                              stop: _currentJourney!.closestEndStop,
-                            ),
-                          ],
-
-                          // Available routes
-                          // Direct routes
-                          if (_currentJourney!.directRoutes.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Available Routes',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            ..._currentJourney!.directRoutes.map(
-                              _buildRouteListTile,
-                            ),
-                          ],
-
-                          // Transfer routes (shown when no direct route)
-                          if (_currentJourney!.directRoutes.isEmpty &&
-                              _currentJourney!.transferRoutes.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Transfer Routes',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            ..._currentJourney!.transferRoutes.map(
-                              _buildTransferRouteTile,
-                            ),
-                          ],
-
-                          // No direct route warning
-                          if (!_currentJourney!.hasDirectRoute &&
-                              _currentJourney!.transferRoutes.isEmpty) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.warning_amber,
-                                    color: Colors.red.shade700,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text(
-                                      'No route available. Try another location',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Walking notice
-                          if (_currentJourney!.hasWalkingSegments) ...[
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.directions_walk,
-                                    color: Colors.orange,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Walk ${_currentJourney!.formattedWalkingDistance} to/from stops',
-                                      style: TextStyle(
-                                        color: Colors.orange.shade900,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          // ── FABs ───────────────────────────────────────────────────────────
+          // FABs
           Positioned(
             right: 16,
             bottom: 180,
-            child: Material(
-              color: Colors.transparent,
-              child: Column(
-                children: [
+            child: Column(
+              children: [
+                FloatingActionButton(
+                  heroTag: 'location',
+                  onPressed: _getCurrentLocation,
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(Icons.my_location),
+                ),
+                if (_currentJourney != null) ...[
+                  const SizedBox(height: 12),
                   FloatingActionButton(
-                    heroTag: 'location',
-                    onPressed: _getCurrentLocation,
-                    backgroundColor: AppColors.primary,
-                    child: const Icon(Icons.my_location),
+                    heroTag: 'clear',
+                    onPressed: _clearRoute,
+                    backgroundColor: Colors.red,
+                    mini: true,
+                    child: const Icon(Icons.clear),
                   ),
-                  if (_currentJourney != null) ...[
-                    const SizedBox(height: 12),
-                    FloatingActionButton(
-                      heroTag: 'clear',
-                      onPressed: _clearRoute,
-                      backgroundColor: Colors.red,
-                      mini: true,
-                      child: const Icon(Icons.clear),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
 
-          // ── Loading Overlay ────────────────────────────────────────────────
+          // Loading overlay
           Consumer<MapProvider>(
             builder: (context, mapProvider, _) {
               if (!mapProvider.isLoading) return const SizedBox.shrink();
               return Container(
-                child: Container(
-                  color: Colors.black54,
-                  child: const Center(
-                    child: Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 16),
-                            Text('Planning your journey...'),
-                          ],
-                        ),
+                color: Colors.black54,
+                child: const Center(
+                  child: Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Planning your journey...'),
+                        ],
                       ),
                     ),
                   ),
@@ -1367,108 +852,309 @@ Widget _buildTransferRouteTile(TransferRoute transfer) {
     );
   }
 
-  // ── Helper Widgets ────────────────────────────────────────────────────────
-  Widget _buildInfoChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  // Extracted journey sheet into its own method
+  Widget _buildJourneySheet() {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.35,
+      minChildSize: 0.2,
+      maxChildSize: 0.85,
+      snap: true,
+      snapSizes: const [0.2, 0.35, 0.85],
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                offset: Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 5,
+                margin: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Your Journey',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ..._currentJourney!.journeyLegs.map(
+                        (leg) => _buildLegTile(leg),
+                      ),
+                      const Divider(height: 32),
+                      // In _buildJourneySheet, replace the summary container:
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            // Clear route button inside the sheet
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _clearRoute,
+                                icon: const Icon(
+                                  Icons.clear,
+                                  color: Colors.red,
+                                  size: 18,
+                                ),
+                                label: const Text(
+                                  'Clear Route',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLegTile(JourneyLeg leg) {
+  final isBus = leg.legType == 'bus';
+  final distMeters = leg.effectiveDistance;
+  final distText = distMeters >= 1000
+      ? '${(distMeters / 1000).toStringAsFixed(1)} km'
+      : '${distMeters.toStringAsFixed(0)} m';
+
+  return Card(
+    margin: const EdgeInsets.only(bottom: 12),
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top row: icon + description + distance
+          Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: isBus ? Colors.blue.shade50 : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isBus ? Icons.directions_bus : Icons.directions_walk,
+                  color: isBus ? Colors.blue : Colors.orange,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(leg.description,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.straighten, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 3),
+                        Text(distText,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        if (isBus && (leg.fareNrs ?? 0) > 0) ...[
+                          const SizedBox(width: 10),
+                          Icon(Icons.confirmation_number, size: 12, color: Colors.grey[600]),
+                          const SizedBox(width: 3),
+                          Text('Nrs. ${(leg.fareNrs ?? 0).toStringAsFixed(0)}',
+                              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Stop chips row — only for bus legs
+          if (isBus) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  if (leg.boardStop != null)
+                    _buildStopChip(leg.boardStop!, Icons.circle, Colors.green),
+                  if (leg.boardStop != null && leg.alightStop != null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
+                    ),
+                  if (leg.transferStop != null) ...[
+                    _buildStopChip(leg.transferStop!, Icons.swap_horiz, Colors.purple),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
+                    ),
+                  ],
+                  if (leg.alightStop != null)
+                    _buildStopChip(leg.alightStop!, Icons.location_on, Colors.red),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildStopChip(StopInfo stop, IconData icon, Color color) {
+  return GestureDetector(
+    onTap: () => _zoomToLocation(stop.latitude, stop.longitude),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
           Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            stop.displayName,
+            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildStopRow({
-    required IconData icon,
-    required Color color,
-    required String label,
-    required NearestStop? stop,
-  }) {
-    if (stop == null) return const SizedBox.shrink();
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        Expanded(
-          child: Text(
-            stop.displayName,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Text(
-          stop.formattedDistance,
-          style: const TextStyle(fontSize: 11, color: Colors.grey),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRouteListTile(BusRoute route) {
-    return InkWell(
-      onTap: () => _loadAndDrawRoute(route),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        child: Row(
+  void _showPOIDetail(POI poi) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.directions_bus,
-                color: AppColors.primary,
-                size: 20,
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    route.routeName,
+            const SizedBox(height: 16),
+            if (poi.imageUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  poi.imageUrl!,
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.location_on, color: Colors.blue, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    poi.name,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Text(
-                    route.routeType,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+            if (poi.description != null && poi.description!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                poi.description!,
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  if (poi.latitude != null && poi.longitude != null) {
+                    final point = GeoPoint(
+                      latitude: poi.latitude!,
+                      longitude: poi.longitude!,
+                    );
+                    Provider.of<LocationProvider>(
+                      context,
+                      listen: false,
+                    ).setDestinationLocation(point);
+                    _destinationController.text = poi.name;
+                    setState(() => _isSearchExpanded = true);
+                    mapController.moveTo(point);
+                  }
+                },
+                icon: const Icon(Icons.directions),
+                label: const Text('Set as destination'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ],
+                ),
               ),
             ),
-            if (route.distanceMeters != null)
-              Text(
-                route.formattedDistance,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
           ],
         ),
       ),

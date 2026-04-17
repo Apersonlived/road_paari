@@ -90,7 +90,7 @@ class RoutingRepository {
     required double startLng,
     required double endLat,
     required double endLng,
-    int maxWalkDistance = 500,
+    int maxWalkDistance = 1200,
   }) async {
     try {
       final response = await _dio.post(

@@ -83,6 +83,37 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteNotification(int notificationId) async {
+  // Optimistic update
+  final previous = List<AppNotification>.from(_notifications);
+  _notifications = _notifications
+      .where((n) => n.id != notificationId)
+      .toList();
+  notifyListeners();
+
+  try {
+    await _repository.deleteNotification(notificationId);
+  } catch (e) {
+    _notifications = previous; // revert on failure
+    _error = e.toString();
+    notifyListeners();
+  }
+}
+
+Future<void> deleteAllNotifications() async {
+  final previous = List<AppNotification>.from(_notifications);
+  _notifications = [];
+  notifyListeners();
+
+  try {
+    await _repository.deleteAllNotifications();
+  } catch (e) {
+    _notifications = previous; // revert on failure
+    _error = e.toString();
+    notifyListeners();
+  }
+}
+
   void clearError() {
     _error = null;
     notifyListeners();
