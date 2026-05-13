@@ -16,7 +16,7 @@ class NotificationProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  /// Unread count — useful for a badge on the bottom nav bar.
+  /// Unread count — for a badge on the bottom nav bar.
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
   Future<void> loadNotifications({bool refresh = false}) async {

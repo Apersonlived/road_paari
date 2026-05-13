@@ -38,7 +38,7 @@ class POICard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // POI Image — nullable so show placeholder if null
+              // POI Image — nullable, show placeholder if null
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: poi.imageUrl != null
@@ -91,7 +91,7 @@ class POICard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
 
-                    // Description (replaces poi.location which doesn't exist)
+                    // Description
                     if (poi.description != null) ...[
                       Text(
                         poi.description!,

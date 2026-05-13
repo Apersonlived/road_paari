@@ -46,7 +46,6 @@ class NotificationService {
         iOS:     iosSettings,
       ),
       onDidReceiveNotificationResponse: (details) {
-        // Handle notification tap — payload contains poi_id if set
         debugPrint('Notification tapped: ${details.payload}');
       },
     );
@@ -79,16 +78,15 @@ class NotificationService {
     debugPrint('=== NotificationService.init() completed ===');
   }
 
-  // ── Show notification from FCM foreground message ─────────────────────────
-
+  // Show notification from FCM foreground message 
   void _showLocalFromRemote(RemoteMessage message) {
     final n = message.notification;
     if (n == null) return;
     showLocal(
       title:   n.title ?? '',
       body:    n.body  ?? '',
-      id:      message.hashCode,        // unique per message
-      payload: message.data['poi_id'],  // passed through to tap handler
+      id:      message.hashCode, // unique per message
+      payload: message.data['poi_id'], // passed through to tap handler
     );
   }
 
@@ -121,7 +119,7 @@ class NotificationService {
     );
   }
 
-  // ── Convenience: show a proximity alert ───────────────────────────────────
+  // Convenience: show a proximity alert 
   Future<void> showProximityNotification({
     required String poiName,
     required String? poiDescription,
@@ -137,7 +135,7 @@ class NotificationService {
       body:    poiDescription != null && poiDescription.isNotEmpty
                    ? '$poiDescription • $dist'
                    : dist,
-      id:      poiId,// stable per POI — replaces previous alert for same POI
+      id:      poiId,
       payload: poiId.toString(),
     );
   }

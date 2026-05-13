@@ -10,6 +10,7 @@ import '../../presentation/screens/profile/profile.dart';
 class AppRoutes {
   static const String login = '/login';
   static const String signup = '/signup';
+  static const String home = '/home'; 
   static const String map = '/map';
   static const String explore = '/explore';
   static const String updates = '/updates';
@@ -19,6 +20,7 @@ class AppRoutes {
   static Map<String, WidgetBuilder> routes = {
     login: (context) => const LoginScreen(),
     signup: (context) => const SignUpScreen(),
+    home:  (context) => const MapScreen(),
     map: (context) => const MapScreen(),
     updates: (context) => const UpdatesScreen(),
     profile: (context) => const ProfileScreen(),

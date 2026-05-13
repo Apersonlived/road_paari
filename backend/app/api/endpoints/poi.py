@@ -9,7 +9,7 @@ from app.crud import poi as poi_crud
 
 router = APIRouter()
 
-# ── POI image upload ──────────────────────────────────────────────────────────
+# POI image upload
 @router.patch("/{poi_id}/image", response_model=POI)
 def upload_poi_image(
     poi_id: int,
@@ -28,7 +28,7 @@ def remove_poi_image(
 ):
     return poi_crud.delete_poi_image(db, poi_id)
 
-# ── Category icon upload ──────────────────────────────────────────────────────
+# Category icon upload 
 @router.patch("/categories/{category_id}/icon", response_model=POICategory)
 def upload_category_icon(
     category_id: int,
@@ -38,13 +38,13 @@ def upload_category_icon(
 ):
     return poi_crud.update_category_icon(db, category_id, file)
 
-# ── Category endpoints ────────────────────────────────────────────────────────
+# Category endpoints 
 
 @router.post("/categories", response_model=POICategory)
 def create_category(
     category_in: POICategoryCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),  # protected
+    _=Depends(get_current_user), 
 ):
     return poi_crud.create_category(db, category_in)
 
@@ -60,16 +60,16 @@ def list_categories(
 def delete_category(
     category_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),  # protected
+    _=Depends(get_current_user),
 ):
     return poi_crud.delete_category(db, category_id)
 
-# ── POI endpoints ─────────────────────────────────────────────────────────────
+# POI endpoints 
 @router.post("/", response_model=POI)
 def create_poi(
     poi_in: POICreate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),  # protected
+    _=Depends(get_current_user), 
 ):
     return poi_crud.create_poi(db, poi_in)
 

@@ -25,14 +25,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   Future<void> _confirmDelete(BuildContext context, User user) async {
-    final currentUserId =
-        context.read<AuthProvider>().currentUser?.id;
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
 
     // Prevent admin from deleting themselves
     if (user.id == currentUserId) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Use "Delete Account" on your profile to delete yourself.'),
+          content: Text(
+            'Use "Delete Account" on your profile to delete yourself.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -57,7 +58,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
@@ -72,12 +74,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final success = await provider.deleteUser(user.id);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success
-          ? '${user.fullName ?? user.email} deleted.'
-          : provider.errorMessage ?? 'Delete failed.'),
-      backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? '${user.fullName ?? user.email} deleted.'
+              : provider.errorMessage ?? 'Delete failed.',
+        ),
+        backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
+      ),
+    );
   }
 
   @override
@@ -87,8 +93,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        title: const Text('Manage Users',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Manage Users',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Padding(
@@ -98,10 +106,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search users...',
-                hintStyle:
-                    TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-                prefixIcon:
-                    const Icon(Icons.search, color: Colors.white),
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+                prefixIcon: const Icon(Icons.search, color: Colors.white),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.15),
                 border: OutlineInputBorder(
@@ -124,11 +132,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.error_outline,
-                      size: 48, color: Colors.red.shade300),
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Colors.red.shade300,
+                  ),
                   const SizedBox(height: 12),
-                  Text(provider.errorMessage!,
-                      style: const TextStyle(color: Colors.red)),
+                  Text(
+                    provider.errorMessage!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: provider.fetchAllUsers,
@@ -142,21 +155,28 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           final filtered = _search.isEmpty
               ? provider.users
               : provider.users
-                  .where((u) =>
-                      (u.fullName ?? '').toLowerCase().contains(_search) ||
-                      u.email.toLowerCase().contains(_search))
-                  .toList();
+                    .where(
+                      (u) =>
+                          (u.fullName ?? '').toLowerCase().contains(_search) ||
+                          u.email.toLowerCase().contains(_search),
+                    )
+                    .toList();
 
           if (filtered.isEmpty) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.people_outline,
-                      size: 48, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.people_outline,
+                    size: 48,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 12),
                   Text(
-                    _search.isEmpty ? 'No users found.' : 'No results for "$_search".',
+                    _search.isEmpty
+                        ? 'No users found.'
+                        : 'No results for "$_search".',
                     style: TextStyle(color: Colors.grey.shade500),
                   ),
                 ],
@@ -190,12 +210,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Avatar
             CircleAvatar(
               radius: 24,
               backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-              backgroundImage:
-                  user.image != null ? NetworkImage(user.image!) : null,
+              backgroundImage: user.image != null
+                  ? NetworkImage(user.image!)
+                  : null,
               child: user.image == null
                   ? Text(
                       _initials(user),
@@ -238,8 +258,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   const SizedBox(height: 2),
                   Text(
                     user.email,
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
@@ -268,13 +287,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
             // Delete button (greyed out for self)
             IconButton(
-              onPressed:
-                  isSelf ? null : () => _confirmDelete(context, user),
+              onPressed: isSelf ? null : () => _confirmDelete(context, user),
               icon: Icon(
                 Icons.delete_outline,
                 color: isSelf ? Colors.grey.shade300 : Colors.red.shade400,
               ),
-              tooltip: isSelf ? 'Use profile to delete your own account' : 'Delete user',
+              tooltip: isSelf
+                  ? 'Use profile to delete your own account'
+                  : 'Delete user',
             ),
           ],
         ),
@@ -293,7 +313,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       child: Text(
         label,
         style: TextStyle(
-            fontSize: 10, color: color, fontWeight: FontWeight.w600),
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

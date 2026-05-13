@@ -150,7 +150,7 @@ class _AdminPOIScreenState extends State<AdminPOIScreen> {
   }
 }
 
-// ── POI Form Bottom Sheet ─────────────────────────────────────────────────────
+// POI Form Bottom Sheet
 class POIFormSheet extends StatefulWidget {
   final POI? poi;
   const POIFormSheet({super.key, this.poi});
@@ -254,8 +254,7 @@ class _POIFormSheetState extends State<POIFormSheet> {
     );
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
-
+  // Submit 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -304,7 +303,7 @@ class _POIFormSheetState extends State<POIFormSheet> {
       return;
     }
 
-    // ── Handle image upload / removal ──────────────────────────────────────
+    // Handle image upload / removal
     if (_pickedImage != null) {
       // Upload new image
       await provider.uploadPOIImage(poiId, _pickedImage!.path);
@@ -324,7 +323,7 @@ class _POIFormSheetState extends State<POIFormSheet> {
     }
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // Build
   Widget _buildImagePicker() {
     final existingUrl = widget.poi?.imageUrl;
     final hasExisting = existingUrl != null && !_removeExistingImage;
@@ -460,9 +459,9 @@ class _POIFormSheetState extends State<POIFormSheet> {
               ),
               const SizedBox(height: 16),
 
-              // Category dropdown — fix: value not initialValue
+              // Category dropdown
               DropdownButtonFormField<int>(
-                initialValue: _selectedCategoryId,  // ← fix
+                initialValue: _selectedCategoryId, 
                 decoration: const InputDecoration(
                   labelText: 'Category',
                   border: OutlineInputBorder(),
@@ -480,7 +479,6 @@ class _POIFormSheetState extends State<POIFormSheet> {
               ),
               const SizedBox(height: 16),
 
-              // Lat / Lng
               Row(
                 children: [
                   Expanded(

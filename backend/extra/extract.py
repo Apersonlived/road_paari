@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# ── Path setup ─────────────────────────────────────────────────────────────────
+# Path setup 
 current_file = Path(__file__).resolve()
 backend_dir  = current_file.parent.parent 
 project_dir  = backend_dir.parent 
@@ -31,7 +31,6 @@ print(f"✓ Connecting to: {DB_URL[:40]}...")
 engine       = create_engine(DB_URL, echo=False, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-# ── Import your actual models (safe now that __init__.py is cleaned) ───────────
 from app.model.transport import OSMNode, OSMWay, Route, RouteWay, BusStop, RouteStop
 
 def import_osm(xml_file):
@@ -44,7 +43,7 @@ def import_osm(xml_file):
         nodes_dict = {}
         stops_dict = {}
 
-        # ── Step 1: Nodes ──────────────────────────────────────────────────────
+        # Step 1: Nodes 
         print("Processing nodes...")
         node_count = 0
         stop_count = 0
@@ -83,7 +82,7 @@ def import_osm(xml_file):
         session.commit()
         print(f"✓ Processed {node_count} nodes ({stop_count} bus stops)")
 
-        # ── Step 2: Ways ───────────────────────────────────────────────────────
+        # Step 2: Ways 
         print("Processing ways...")
         ways_dict = {}
         way_count = 0
@@ -121,7 +120,7 @@ def import_osm(xml_file):
         session.commit()
         print(f"✓ Processed {way_count} ways")
 
-        # ── Step 3: Routes ─────────────────────────────────────────────────────────────
+        # Step 3: Routes
         print("Processing routes...")
         route_count = 0
 
@@ -140,7 +139,7 @@ def import_osm(xml_file):
             way_sequence   = 0
             stop_sequence  = 0
             terminal_stops = []
-            added_stops    = set()   # ← track stops already added for this route
+            added_stops    = set()
 
             for member in relation.findall("member"):
                 mtype = member.get("type")
@@ -170,7 +169,7 @@ def import_osm(xml_file):
                             stop_id=node_id,
                             sequence=stop_sequence
                         ))
-                        added_stops.add(node_id)   # ← mark as added
+                        added_stops.add(node_id) 
                         stop_sequence += 1
 
                 elif mtype == "node" and role in ("start", "end"):
@@ -191,9 +190,9 @@ def import_osm(xml_file):
                 geom=geom
             ))
 
-            # ── Handle start/end terminal nodes ───────────────────────────────────
+            # Handle start/end terminal nodes
             for role, node_id in terminal_stops:
-                if node_id not in added_stops:   # ← skip if already added
+                if node_id not in added_stops: 
                     if node_id in nodes_dict and node_id not in stops_dict:
                         lon, lat  = nodes_dict[node_id]
                         point     = Point(lon, lat)
@@ -212,17 +211,17 @@ def import_osm(xml_file):
                             stop_id=node_id,
                             sequence=seq
                         ))
-                        added_stops.add(node_id)   # ← mark as added
+                        added_stops.add(node_id) 
                         stop_sequence += 1
 
-            # ── Infer intermediate stops from geometry ─────────────────────────────
+            # Infer intermediate stops from geometry
             if stop_sequence <= 2 and stops_dict:
                 print(f"  Inferring stops for '{route_name}'...")
                 MAX_DIST = 0.0005
 
                 nearby = []
                 for stop_id, stop_point in stops_dict.items():
-                    if stop_id not in added_stops:   # ← skip already added stops
+                    if stop_id not in added_stops:
                         if multi.distance(stop_point) <= MAX_DIST:
                             position = multi.project(stop_point)
                             nearby.append((position, stop_id))
@@ -235,7 +234,7 @@ def import_osm(xml_file):
                         stop_id=stop_id,
                         sequence=seq
                     ))
-                    added_stops.add(stop_id)   # ← mark as added
+                    added_stops.add(stop_id)
 
                 stop_sequence += len(nearby)
 

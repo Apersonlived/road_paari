@@ -34,7 +34,7 @@ class AuthProvider with ChangeNotifier {
     try {
       _currentUser = await _authRepository.getCurrentUser();
       notifyListeners();
-      await _saveFcmToken(); // also save token on session restore
+      await _saveFcmToken();
       _proximityService.start();
     } catch (_) {
       await _authRepository.logout();
@@ -71,7 +71,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
         fullName: fullName,
       );
-      return await login(email, password); // login() calls _saveFcmToken()
+      return await login(email, password);
     } on ApiException catch (e) {
       _setError(e.message);
       _setLoading(false);
@@ -83,15 +83,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Single definition of _saveFcmToken
   Future<void> _saveFcmToken() async {
     try {
       String? token = NotificationService.instance.fcmToken;
       token ??= await FirebaseMessaging.instance.getToken();
-      debugPrint('=== Saving FCM token: $token ===');
       if (token == null) return;
       await _authRepository.saveFcmToken(token);
-      debugPrint('=== FCM token saved successfully ===');
     } catch (e) {
       debugPrint('=== Failed to save FCM token: $e ===');
     }
@@ -177,6 +174,53 @@ class AuthProvider with ChangeNotifier {
       return false;
     } catch (e) {
       _setError('Failed to change password.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> uploadProfileImage(String filePath) async {
+    if (_currentUser == null) return false;
+    _setLoading(true);
+    _clearError();
+    try {
+      final updated = await _userRepository.uploadProfileImage(
+        userId: _currentUser!.id,
+        filePath: filePath,
+      );
+      _currentUser = updated;
+      _setLoading(false);
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _setError(e.message);
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to upload image.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> removeProfileImage() async {
+    if (_currentUser == null) return false;
+    _setLoading(true);
+    _clearError();
+    try {
+      final updated = await _userRepository.removeProfileImage(
+        _currentUser!.id,
+      );
+      _currentUser = updated;
+      _setLoading(false);
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _setError(e.message);
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to remove image.');
       _setLoading(false);
       return false;
     }

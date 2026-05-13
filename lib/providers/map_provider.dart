@@ -20,7 +20,7 @@ class MapProvider extends ChangeNotifier {
   MapProvider({required ApiClient apiClient})
     : _routingRepository = RoutingRepository(apiClient.dio);
 
-  // ── Getters ────────────────────────────────────────────────────────────────
+  // Getters 
   CompleteJourney? get currentJourney => _currentJourney;
   RouteDetails? get selectedRouteDetails => _selectedRouteDetails;
   bool get isLoading => _isLoading;
@@ -44,7 +44,7 @@ class MapProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Plan Journey ───────────────────────────────────────────────────────────
+  // Plan Journey 
   Future<CompleteJourney?> planJourney({
     required double startLat,
     required double startLng,
@@ -87,7 +87,7 @@ class MapProvider extends ChangeNotifier {
     }
   }
 
-  // ── Route Details ──────────────────────────────────────────────────────────
+  // Route Details 
   Future<RouteDetails?> loadRouteDetails({
     required int routeId,
     int? startStopId,
@@ -112,7 +112,7 @@ class MapProvider extends ChangeNotifier {
     }
   }
 
-  // ── Nearest Stops ──────────────────────────────────────────────────────────
+  // Nearest Stops 
   Future<List<NearestStop>> findNearestStops({
     required double lat,
     required double lng,

@@ -5,6 +5,7 @@ import 'services/proximity_service.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'data/api/api_client.dart';
+import 'presentation/screens/auth_gate.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'data/repositories/poi_repository.dart';
@@ -16,7 +17,7 @@ import 'providers/poi_provider.dart';
 import 'providers/notification_provider.dart';
 
 class MyApp extends StatelessWidget {
-  final ApiClient apiClient; // ← accept it
+  final ApiClient apiClient; 
   const MyApp({super.key, required this.apiClient});
 
   @override
@@ -32,10 +33,8 @@ class MyApp extends StatelessWidget {
           create: (_) => NotificationRepository(apiClient),
         ),
 
-        // ── Move LocationProvider UP here, before AuthProvider ──
         ChangeNotifierProvider(create: (_) => LocationProvider()),
 
-        // Auth — can now safely read LocationProvider
         ChangeNotifierProxyProvider2<
           AuthRepository,
           UserRepository,
@@ -46,7 +45,7 @@ class MyApp extends StatelessWidget {
             userRepository: UserRepository(apiClient),
             proximityService: ProximityService(
               locationProvider: context
-                  .read<LocationProvider>(), // ← now available
+                  .read<LocationProvider>(), 
               notificationRepository: context.read<NotificationRepository>(),
             ),
           ),
@@ -67,11 +66,9 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             userRepository: context.read<UserRepository>(),
-            // or however you provide your UserRepository
           ),
         ),
 
-        // Map & Location — LocationProvider already registered above, don't add again
         ChangeNotifierProvider(
           create: (_) => MapProvider(apiClient: apiClient),
         ),
@@ -97,7 +94,7 @@ class MyApp extends StatelessWidget {
         title: 'RoadPaari',
         theme: AppTheme.lightTheme,
         debugShowCheckedModeBanner: false,
-        initialRoute: AppRoutes.login,
+        home: const AuthGate(),
         routes: AppRoutes.routes,
       ),
     );

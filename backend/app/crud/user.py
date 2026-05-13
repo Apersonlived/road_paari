@@ -30,9 +30,9 @@ def save_user_image(file: UploadFile, user_id: int) -> str:
         )
 
     # Validate file size
-    file.file.seek(0, 2)  # seek to end
+    file.file.seek(0, 2)  
     size_bytes = file.file.tell()
-    file.file.seek(0)     # reset to start
+    file.file.seek(0) 
     if size_bytes > MAX_FILE_SIZE_MB * 1024 * 1024:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -46,7 +46,7 @@ def save_user_image(file: UploadFile, user_id: int) -> str:
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Return URL path (served as static file)
+    # Return URL path
     return f"/static/user_images/{filename}"
 
 def delete_user_image(image_url: str) -> None:

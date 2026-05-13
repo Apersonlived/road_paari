@@ -18,8 +18,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:*",  # Flutter web for development
-        "*"  # Allow all origins during development (restricts in production)
+        "http://localhost:*", 
+        "*"  
     ],
     allow_credentials=False,
     allow_methods=["*"],

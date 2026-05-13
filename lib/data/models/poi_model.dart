@@ -31,7 +31,7 @@ class POI {
   final String? imageUrl;
   final DateTime? createdAt;
   final int? createdBy;
-  final double? distanceMeters; // for nearby results
+  final double? distanceMeters;
 
   POI({
     required this.id,

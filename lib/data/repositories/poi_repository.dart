@@ -89,7 +89,7 @@ class POIRepository {
         if (imageUrl != null) 'image_url' : imageUrl
       };
 
-      final response = await _apiClient.dio.patch( // ← PATCH not PUT
+      final response = await _apiClient.dio.patch(
         '/poi/$poiId',
         data: data,
       );

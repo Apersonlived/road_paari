@@ -87,55 +87,53 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('Error setting Kathmandu view: $e');
     }
   }
-// 1. Define Dio at the class level to reuse the connection (prevents socket exhaustion)
-final Dio _dio = Dio(
-  BaseOptions(
-    connectTimeout: const Duration(seconds: 15), // Increased slightly
-    receiveTimeout: const Duration(seconds: 15),
-    headers: {
-      // Be very specific with the User-Agent
-      'User-Agent': 'RoadPaari_App_v1.0 (contact: roadpaari@gmail.com)',
-      'Accept-Language': 'en', // Helps Nominatim process the request faster
-    },
-  ),
-);
 
-Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
-  if (query.isEmpty) return [];
-
-  try {
-    // 2. Use the full URL directly to avoid BaseUrl resolution issues
-    // and use 'search' with a trailing slash or .php to be more explicit
-    final response = await _dio.get(
-      'https://nominatim.openstreetmap.org/search',
-      queryParameters: {
-        'q': query,
-        'format': 'json',
-        'limit': 5,
-        'countrycodes': 'np', // Nepal filter
-        'addressdetails': 1,
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'User-Agent': 'RoadPaari_App_v1.0 (contact: roadpaari@gmail.com)',
+        'Accept-Language': 'en',
       },
-    );
+    ),
+  );
 
-    if (response.statusCode == 200) {
-      return (response.data as List)
-          .map((r) => _PlaceSuggestion.fromJson(r))
-          .toList();
+  Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
+    if (query.isEmpty) return [];
+
+    try {
+      final response = await _dio.get(
+        'https://nominatim.openstreetmap.org/search',
+        queryParameters: {
+          'q': query,
+          'format': 'json',
+          'limit': 5,
+          'countrycodes': 'np',
+          'addressdetails': 1,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return (response.data as List)
+            .map((r) => _PlaceSuggestion.fromJson(r))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout) {
+        debugPrint(
+          'Nominatim Timeout: Check your internet or if the IP is throttled',
+        );
+      } else {
+        debugPrint('Nominatim Dio Error: ${e.message}');
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Nominatim General error: $e');
+      return [];
     }
-    return [];
-  } on DioException catch (e) {
-    // 3. Specific logging to see exactly why it's timing out
-    if (e.type == DioExceptionType.connectionTimeout) {
-      debugPrint('Nominatim Timeout: Check your internet or if the IP is throttled');
-    } else {
-      debugPrint('Nominatim Dio Error: ${e.message}');
-    }
-    return [];
-  } catch (e) {
-    debugPrint('Nominatim General error: $e');
-    return [];
   }
-}
 
   void _showStartOverlay(List<_PlaceSuggestion> suggestions) {
     _removeStartOverlay();
@@ -471,7 +469,11 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
     await mapController.addMarker(
       point,
       markerIcon: MarkerIcon(
-        icon: const Icon(Icons.location_on, color: Colors.blue, size: 50),
+        icon: const Icon(
+          Icons.location_on_rounded,
+          color: Colors.blue,
+          size: 80,
+        ),
       ),
     );
   }
@@ -511,10 +513,12 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
       context,
       listen: false,
     );
-    if (locationProvider.startLocation != null)
+    if (locationProvider.startLocation != null) {
       await mapController.removeMarker(locationProvider.startLocation!);
-    if (locationProvider.destinationLocation != null)
+    }
+    if (locationProvider.destinationLocation != null) {
       await mapController.removeMarker(locationProvider.destinationLocation!);
+    }
 
     if (_currentJourney?.closestStartStop != null) {
       await mapController.removeMarker(
@@ -577,7 +581,6 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      // ← Move journey panel here instead of inside Stack
       bottomSheet: _currentJourney != null ? _buildJourneySheet() : null,
       body: Stack(
         children: [
@@ -904,7 +907,6 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
                         (leg) => _buildLegTile(leg),
                       ),
                       const Divider(height: 32),
-                      // In _buildJourneySheet, replace the summary container:
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -913,7 +915,7 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
                         ),
                         child: Column(
                           children: [
-                            // Clear route button inside the sheet
+                            // Clear route button
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
@@ -950,122 +952,172 @@ Future<List<_PlaceSuggestion>> _searchPlaces(String query) async {
   }
 
   Widget _buildLegTile(JourneyLeg leg) {
-  final isBus = leg.legType == 'bus';
-  final distMeters = leg.effectiveDistance;
-  final distText = distMeters >= 1000
-      ? '${(distMeters / 1000).toStringAsFixed(1)} km'
-      : '${distMeters.toStringAsFixed(0)} m';
+    final isBus = leg.legType == 'bus';
+    final distMeters = leg.effectiveDistance;
+    final distText = distMeters >= 1000
+        ? '${(distMeters / 1000).toStringAsFixed(1)} km'
+        : '${distMeters.toStringAsFixed(0)} m';
 
-  return Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Top row: icon + description + distance
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: isBus ? Colors.blue.shade50 : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(10),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isBus ? Colors.blue.shade50 : Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isBus ? Icons.directions_bus : Icons.directions_walk,
+                    color: isBus ? Colors.blue : Colors.orange,
+                    size: 22,
+                  ),
                 ),
-                child: Icon(
-                  isBus ? Icons.directions_bus : Icons.directions_walk,
-                  color: isBus ? Colors.blue : Colors.orange,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(leg.description,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(Icons.straighten, size: 12, color: Colors.grey[600]),
-                        const SizedBox(width: 3),
-                        Text(distText,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                        if (isBus && (leg.fareNrs ?? 0) > 0) ...[
-                          const SizedBox(width: 10),
-                          Icon(Icons.confirmation_number, size: 12, color: Colors.grey[600]),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        leg.description,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.straighten,
+                            size: 12,
+                            color: Colors.grey[600],
+                          ),
                           const SizedBox(width: 3),
-                          Text('Nrs. ${(leg.fareNrs ?? 0).toStringAsFixed(0)}',
-                              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                          Text(
+                            distText,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          if (isBus && (leg.fareNrs ?? 0) > 0) ...[
+                            const SizedBox(width: 10),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(100, 0, 0, 0),
+                              child: Icon(
+                                Icons.confirmation_number,
+                                size: 20,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Nrs. ${(leg.fareNrs ?? 0).toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontStyle: FontStyle.italic,
+                                fontSize: 20,
+                                color: Colors.grey[900],
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            if (isBus) ...[
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    if (leg.boardStop != null)
+                      _buildStopChip(
+                        leg.boardStop!,
+                        Icons.circle,
+                        Colors.green,
+                      ),
+                    if (leg.boardStop != null && leg.alightStop != null)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          Icons.arrow_forward,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    if (leg.transferStop != null) ...[
+                      _buildStopChip(
+                        leg.transferStop!,
+                        Icons.swap_horiz,
+                        Colors.purple,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          Icons.arrow_forward,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                    if (leg.alightStop != null)
+                      _buildStopChip(
+                        leg.alightStop!,
+                        Icons.location_on,
+                        Colors.red,
+                      ),
                   ],
                 ),
               ),
             ],
-          ),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // Stop chips row — only for bus legs
-          if (isBus) ...[
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  if (leg.boardStop != null)
-                    _buildStopChip(leg.boardStop!, Icons.circle, Colors.green),
-                  if (leg.boardStop != null && leg.alightStop != null)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
-                      child: Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
-                    ),
-                  if (leg.transferStop != null) ...[
-                    _buildStopChip(leg.transferStop!, Icons.swap_horiz, Colors.purple),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
-                      child: Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
-                    ),
-                  ],
-                  if (leg.alightStop != null)
-                    _buildStopChip(leg.alightStop!, Icons.location_on, Colors.red),
-                ],
+  Widget _buildStopChip(StopInfo stop, IconData icon, Color color) {
+    return GestureDetector(
+      onTap: () => _zoomToLocation(stop.latitude, stop.longitude),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(
+              stop.displayName,
+              style: TextStyle(
+                fontSize: 11,
+                color: color,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
-        ],
+        ),
       ),
-    ),
-  );
-}
-
-Widget _buildStopChip(StopInfo stop, IconData icon, Color color) {
-  return GestureDetector(
-    onTap: () => _zoomToLocation(stop.latitude, stop.longitude),
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            stop.displayName,
-            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+    );
+  }
 
   void _showPOIDetail(POI poi) {
     showModalBottomSheet(

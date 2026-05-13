@@ -75,7 +75,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ────────────────────────────────────────────────────
+            // Header
             Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
@@ -123,8 +123,9 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             ),
             Consumer<NotificationProvider>(
               builder: (context, provider, _) {
-                if (provider.notifications.isEmpty)
+                if (provider.notifications.isEmpty) {
                   return const SizedBox.shrink();
+                }
                 return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -154,7 +155,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               },
             ),
 
-            // ── Unread badge summary ───────────────────────────────────────
+            // Unread badge summary
             Consumer<NotificationProvider>(
               builder: (context, provider, _) {
                 final unread = provider.notifications
@@ -190,7 +191,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               },
             ),
 
-            // ── Notification list ──────────────────────────────────────────
+            // Notification list
             Expanded(
               child: Consumer<NotificationProvider>(
                 builder: (context, provider, _) {
@@ -261,51 +262,56 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                       itemCount: provider.notifications.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
-  final notif = provider.notifications[index];
-  return Dismissible(
-    key: Key('notif_${notif.id}'),
-    direction: DismissDirection.endToStart,
-    background: Container(
-      alignment: Alignment.centerRight,
-      padding: const EdgeInsets.only(right: 20),
-      color: Colors.red,
-      child: const Icon(Icons.delete_outline, color: Colors.white),
-    ),
-    onDismissed: (_) => provider.deleteNotification(notif.id),
-    child: _NotificationTile(
-      notif: notif,
-      onTap: () async {
-        // Mark as read
-        if (!notif.isRead) provider.markAsRead(notif.id);
+                        final notif = provider.notifications[index];
+                        return Dismissible(
+                          key: Key('notif_${notif.id}'),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: Colors.red,
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white,
+                            ),
+                          ),
+                          onDismissed: (_) =>
+                              provider.deleteNotification(notif.id),
+                          child: _NotificationTile(
+                            notif: notif,
+                            onTap: () async {
+                              // Mark as read
+                              if (!notif.isRead) provider.markAsRead(notif.id);
 
-        // Navigate to POI detail if poiId exists
-        if (notif.poiId != null) {
-          final poiProvider = context.read<POIProvider>();
+                              // Navigate to POI detail if poiId exists
+                              if (notif.poiId != null) {
+                                final poiProvider = context.read<POIProvider>();
 
-          // Try to find POI in already loaded list first
-          POI? poi = poiProvider.pois
-              .where((p) => p.id == notif.poiId)
-              .firstOrNull;
+                                // Try to find POI in already loaded list first
+                                POI? poi = poiProvider.pois
+                                    .where((p) => p.id == notif.poiId)
+                                    .firstOrNull;
 
-          // If not loaded yet, fetch it
-          if (poi == null) {
-            await poiProvider.loadPOIById(notif.poiId!);
-            poi = poiProvider.selectedPoi;
-          }
+                                // If not loaded yet, fetch it
+                                if (poi == null) {
+                                  await poiProvider.loadPOIById(notif.poiId!);
+                                  poi = poiProvider.selectedPoi;
+                                }
 
-          if (poi != null && context.mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => POIDetailScreen(poi: poi!),
-              ),
-            );
-          }
-        }
-      },
-    ),
-  );
-},
+                                if (poi != null && context.mounted) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          POIDetailScreen(poi: poi!),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
@@ -322,7 +328,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   }
 }
 
-// ── Notification tile ──────────────────────────────────────────────────────
+// Notification tile 
 
 class _NotificationTile extends StatelessWidget {
   final dynamic notif; // AppNotification

@@ -17,7 +17,7 @@ class ProximityService {
   /// Alert radius sent to the backend (in metres).
   final double alertRadiusMeters;
 
-  /// POI IDs we already alerted about — cleared when user travels
+  /// POI IDs users already alerted about — cleared when user travels
   final Set<int> _alertedPoiIds = {};
 
   /// Re-alert after this distance moved (in metres).
@@ -39,7 +39,6 @@ class ProximityService {
 
   /// Start periodic proximity polling.
   void start() {
-    debugPrint('=== ProximityService started ===');
     _timer?.cancel();
     _timer = Timer.periodic(_interval, (_) => _check());
   }
@@ -47,9 +46,7 @@ class ProximityService {
   void stop() => _timer?.cancel();
 
   Future<void> _check() async {
-  debugPrint('ProximityService: _check() called');
   final loc = _locationProvider.currentLocation;
-  debugPrint('ProximityService: location = $loc'); 
   if (loc == null) return;
 
 final token = _notifService.fcmToken;
@@ -65,14 +62,11 @@ if (token == null) {
   }
 
   try {
-    debugPrint('ProximityService: calling proximityCheck API');
     final result = await _notifRepo.proximityCheck(
       latitude: loc.latitude,
       longitude: loc.longitude,
       radiusMeters: alertRadiusMeters
     );
-
-    debugPrint('ProximityService: API response = $result');
 
     if (result['triggered'] == true) {
       final pois = result['nearby_pois'] as List;

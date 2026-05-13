@@ -71,7 +71,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ──────────────────────────────────────────────────────
+            // Header
             Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
@@ -139,7 +139,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               ),
             ),
 
-            // ── Category Filter ──────────────────────────────────────────────
+            // Category Filter
             Consumer<POIProvider>(
               builder: (context, provider, _) {
                 if (provider.categories.isEmpty) return const SizedBox.shrink();
@@ -175,7 +175,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               },
             ),
 
-            // ── POI List ─────────────────────────────────────────────────────
+            // POI List
             Expanded(
               child: Consumer<POIProvider>(
                 builder: (context, provider, _) {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../data/models/user_model.dart';
+import '../../../data/api/api_client.dart';
 import '../../../providers/auth_provider.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 
@@ -56,6 +58,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+  Future<void> _pickAndUploadImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 512,
+    );
+    if (picked == null || !mounted) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final success = await auth.uploadProfileImage(picked.path);
+    if (mounted) {
+      _showSnackBar(
+        success ? 'Photo updated!' : auth.errorMessage ?? 'Upload failed',
+        isError: !success,
+      );
+    }
+  }
 
   Future<void> _saveProfile() async {
     if (!_editFormKey.currentState!.validate()) return;
@@ -111,24 +131,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAccount() async {
-  final confirmed = await _showConfirmDialog(
-    title: 'Delete Account',
-    message:
-        'This will permanently delete your account and all associated data. This cannot be undone.',
-    confirmLabel: 'Delete',
-    confirmColor: Colors.red.shade800,
-  );
-  if (!confirmed || !mounted) return;
-  final auth = Provider.of<AuthProvider>(context, listen: false);
-  final success = await auth.deleteAccount();
-  if (!mounted) return;
-  if (success) {
-    Navigator.pushNamedAndRemoveUntil(
-        context, AppRoutes.login, (route) => false);
-  } else {
-    _showSnackBar(auth.errorMessage ?? 'Failed to delete account.');
+    final confirmed = await _showConfirmDialog(
+      title: 'Delete Account',
+      message:
+          'This will permanently delete your account and all associated data. This cannot be undone.',
+      confirmLabel: 'Delete',
+      confirmColor: Colors.red.shade800,
+    );
+    if (!confirmed || !mounted) return;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final success = await auth.deleteAccount();
+    if (!mounted) return;
+    if (success) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppRoutes.login,
+        (route) => false,
+      );
+    } else {
+      _showSnackBar(auth.errorMessage ?? 'Failed to delete account.');
+    }
   }
-}
 
   void _cancelEdit() {
     _loadUserIntoFields();
@@ -173,7 +196,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text(confirmLabel, style: const TextStyle(color: Colors.white)),
+                child: Text(
+                  confirmLabel,
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -269,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
-              // Loading overlay — driven by AuthProvider
+              // Loading overlay
               if (auth.isLoading)
                 Container(
                   color: Colors.black38,
@@ -317,7 +343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       radius: 48,
                       backgroundColor: Colors.white.withValues(alpha: 0.2),
                       backgroundImage: user.image != null
-                          ? NetworkImage(user.image!)
+                          ? NetworkImage(ApiClient.resolveImageUrl(user.image!))
                           : null,
                       child: user.image == null
                           ? Text(
@@ -332,7 +358,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     if (!_isEditing)
                       GestureDetector(
-                        onTap: () => setState(() => _isEditing = true),
+                        onTap: _pickAndUploadImage,
                         child: Container(
                           padding: const EdgeInsets.all(5),
                           decoration: const BoxDecoration(
@@ -340,7 +366,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            Icons.edit,
+                            Icons.camera_alt,
                             size: 16,
                             color: AppColors.primary,
                           ),

@@ -54,7 +54,7 @@ class POIDetailScreen extends StatelessWidget {
             ),
           ),
 
-          // ── Content ──────────────────────────────────────────────────────
+          // Content 
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -62,7 +62,7 @@ class POIDetailScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  // ── Info chips row ────────────────────────────────────────
+                  // Info chips row 
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -88,7 +88,7 @@ class POIDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // ── About ─────────────────────────────────────────────────
+                  // About
                   if (poi.description != null && poi.description!.isNotEmpty) ...[
                     const Text(
                       'About',
@@ -106,7 +106,7 @@ class POIDetailScreen extends StatelessWidget {
                     const SizedBox(height: 24),
                   ],
 
-                  // ── Location ──────────────────────────────────────────────
+                  // Location
                   if (poi.latitude != null && poi.longitude != null) ...[
                     const Text(
                       'Location',
@@ -191,7 +191,7 @@ class POIDetailScreen extends StatelessWidget {
   }
 }
 
-// ── Reusable info chip ────────────────────────────────────────────────────────
+// Reusable info chip 
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;

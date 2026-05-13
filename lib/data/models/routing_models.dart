@@ -126,7 +126,6 @@ class WalkingSegment {
   }
 }
 
-// Add to routing_models.dart
 class StopInfo {
   final int stopId;
   final String? stopName;

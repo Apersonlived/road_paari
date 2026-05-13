@@ -65,7 +65,7 @@ def _walking_distance(segments: list) -> float:
         if s.length_meters and s.length_meters > 0:
             total += s.length_meters
         elif s.cost and s.cost > 0:
-            total += s.cost * 1.4  # 1.4 m/s walking speed
+            total += s.cost * 1.4
     return total
 
 
@@ -165,7 +165,6 @@ async def calculate_walking_segment(start_lat: float, start_lng: float,
         return []
 
 
-# In get_routes_between_stops - return [] instead of raising, and rollback on error
 @router.get("/routes-between-stops", response_model=List[BusRoute])
 async def get_routes_between_stops(
     start_stop_id: int = Query(...),
@@ -179,7 +178,7 @@ async def get_routes_between_stops(
         ).fetchall()
 
         if not results:
-            return []  # ← Never raise 404 here
+            return [] 
 
         return [
             BusRoute(
@@ -195,12 +194,11 @@ async def get_routes_between_stops(
             for row in results
         ]
     except Exception as e:
-        db.rollback()  # ← CRITICAL: reset the poisoned transaction
+        db.rollback()
         logger.warning(f"routes-between-stops error: {e}")
-        return []  # ← Return empty instead of raising
+        return []
 
 
-# In find_transfer_routes endpoint
 @router.get("/transfer-route", response_model=List[TransferRoute])
 async def find_transfer_routes(start_stop_id: int, end_stop_id: int, db: Session = Depends(get_db)):
     try:
@@ -223,12 +221,11 @@ async def find_transfer_routes(start_stop_id: int, end_stop_id: int, db: Session
             for row in results
         ]
     except Exception as e:
-        db.rollback()  # ← CRITICAL
+        db.rollback() 
         logger.warning(f"Transfer route search failed: {str(e)}")
         return []
 
 
-# In calculate_walking_segment
 @router.get("/calculate_walking_segment", response_model=List[WalkingSegment])
 async def calculate_walking_segment(start_lat: float, start_lng: float,
                                   end_lat: float, end_lng: float,
@@ -247,7 +244,7 @@ async def calculate_walking_segment(start_lat: float, start_lng: float,
             for row in results
         ]
     except Exception as e:
-        db.rollback()  # ← CRITICAL
+        db.rollback()
         logger.warning(f"Walking route calculation failed: {str(e)}")
         return []
 
@@ -306,7 +303,6 @@ async def get_route_details(
         raise HTTPException(500, f"Failed to get route details: {str(e)}")
 
 
-# JOURNEY PLANNER 
 @router.post("/plan-journey", response_model=CompleteJourney)
 async def plan_journey(
     start: LocationPoint,
@@ -383,7 +379,6 @@ async def plan_journey(
                     "transfer_routes": transfers,
                 })
 
-        # If best score is still very high → fallback to walking
         if not scored_pairs or scored_pairs[0]["total_score"] > 100000:
             walking = await calculate_walking_segment(start.lat, start.lng, end.lat, end.lng, db)
             total_walk = sum(s.length_meters or 0 for s in walking)
@@ -565,8 +560,7 @@ async def plan_journey(
             error_message=f"Planning error: {str(e)}"
         )
 
-# ====================== OTHER ENDPOINTS ======================
-
+#  other endpoints
 @router.get("/routes-at-stop/{stop_id}")
 async def get_routes_at_stop(stop_id: int, db: Session = Depends(get_db)):
     try:

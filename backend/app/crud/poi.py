@@ -75,7 +75,7 @@ def update_category_icon(
     db.refresh(category)
     return category
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# Helper functions
 def _extract_lat_lng(poi: POIModel) -> tuple[float | None, float | None]:
     """
     Extracts latitude and longitude from a POI's geometry column.
@@ -83,7 +83,6 @@ def _extract_lat_lng(poi: POIModel) -> tuple[float | None, float | None]:
     """
     if poi.geom is None:
         return None, None
-    # ST_AsText returns 'POINT(lng lat)'
     wkt = poi.geom
     if isinstance(wkt, str) and wkt.startswith("POINT"):
         coords = wkt.replace("POINT(", "").replace(")", "").split()
@@ -106,7 +105,7 @@ def _build_poi_response(poi: POIModel) -> dict:
         "image_url": poi.image_url
     }
 
-# ── Category CRUD ─────────────────────────────────────────────────────────────
+# Category CRUD 
 def create_category(db: Session, category_in: POICategoryCreate) -> POICategoryModel:
     existing = db.query(POICategoryModel).filter(
         POICategoryModel.name == category_in.name
@@ -151,7 +150,7 @@ def delete_category(db: Session, category_id: int) -> dict:
     return {"detail": f"Category {category_id} deleted successfully"}
 
 
-# ── POI CRUD ──────────────────────────────────────────────────────────────────
+# POI CRUD
 def create_poi(db: Session, poi_in: POICreate) -> POIModel:
     # Build PostGIS point from lat/lng
     geom = ST_SetSRID(ST_Point(poi_in.longitude, poi_in.latitude), 4326)
@@ -225,8 +224,7 @@ def delete_poi(db: Session, poi_id: int) -> dict:
     return {"detail": f"POI {poi_id} deleted successfully"}
 
 
-# ── Spatial queries ───────────────────────────────────────────────────────────
-
+# Spatial queries
 def get_pois_near_location(
     db: Session,
     lat: float,
@@ -251,7 +249,7 @@ def get_pois_near_location(
         ST_DWithin(
             POIModel.geom.cast(Geometry),
             point.cast(Geometry),
-            radius_meters / 111320,  # convert meters to degrees (approximate)
+            radius_meters / 111320,  # convert meters to degrees
         )
     )
 

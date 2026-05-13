@@ -14,8 +14,8 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: getBaseUrl(),
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -30,7 +30,7 @@ class ApiClient {
     );
   }
 
-  Future<void> init() async{
+  Future<void> init() async {
     // Load saved tokens
     _loadTokens();
   }
@@ -87,22 +87,27 @@ class ApiClient {
   ) async {
     print('Error: ${error.response?.statusCode} ${error.message}');
 
-    // Handle 401 Unauthorized - Try to refresh token
     if (error.response?.statusCode == 401 && _refreshToken != null) {
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: _dio.options.baseUrl,
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+
       try {
-        // Try to refresh the token
-        final response = await _dio.post(
+        final response = await refreshDio.post(
           '/auth/refresh',
           data: {'refresh_token': _refreshToken},
         );
 
         if (response.statusCode == 200) {
-          final newAccessToken = response.data['access_token'];
-          final newRefreshToken = response.data['refresh_token'];
+          final newAccessToken = response.data['access_token'] as String;
+          final newRefreshToken = response.data['refresh_token'] as String;
 
           await _saveTokens(newAccessToken, newRefreshToken);
 
-          // Retry the failed request
+          // Retry the original failed request with new token
           final opts = error.requestOptions;
           opts.headers['Authorization'] = 'Bearer $newAccessToken';
 
@@ -110,7 +115,7 @@ class ApiClient {
           return handler.resolve(retryResponse);
         }
       } catch (e) {
-        // Refresh failed, clear tokens
+        print('Token refresh failed: $e');
         await clearTokens();
       }
     }
@@ -133,7 +138,7 @@ class ApiClient {
   bool get isAuthenticated => _accessToken != null;
   String? get accessToken => _accessToken;
 
-  // Update base URL (for production)
+  // Update base URL
   void setBaseUrl(String url) {
     _dio.options.baseUrl = url;
   }

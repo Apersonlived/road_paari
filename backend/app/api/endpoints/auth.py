@@ -17,6 +17,9 @@ from app.model import User as UserModel
 class FCMTokenUpdate(BaseModel):
     fcm_token: str
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 router = APIRouter()
 
 @router.post("/register", response_model=User)
@@ -77,21 +80,21 @@ def update_fcm_token(
 async def get_me(current_user: UserModel = Depends(get_current_user)):
     return current_user
 
-
 @router.post("/refresh")
-async def refresh(token: str, db: Session = Depends(get_db)):
-    payload = decode_token(token)
-    if payload is None or payload.get("type") != "refresh":
+async def refresh(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    token_data = decode_token(payload.refresh_token)  # ← use body field
+    if token_data is None or token_data.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    user_id = payload.get("sub")
+    user_id = token_data.get("sub")
     user = db.query(UserModel).filter(UserModel.id == int(user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     return {
         "access_token": create_access_token(data={"sub": str(user.id)}),
+        "refresh_token": create_refresh_token(data={"sub": str(user.id)}),  # ← return new refresh token too
         "token_type": "bearer",
     }

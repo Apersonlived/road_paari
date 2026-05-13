@@ -45,7 +45,7 @@ class UserRepository {
       if (email != null) data['email'] = email;
       if (fullName != null) data['full_name'] = fullName;
 
-      final response = await _apiClient.dio.put(
+      final response = await _apiClient.dio.patch(
         '/users/$userId',
         data: data,
       );
@@ -72,13 +72,47 @@ class UserRepository {
     required String newPassword,
   }) async {
     try {
-      await _apiClient.dio.put(
+      await _apiClient.dio.patch(
         '/users/$userId/password',
         data: {
           'old_password': oldPassword,
           'new_password': newPassword,
         },
       );
+    } on DioException catch (e) {
+      throw ApiException.fromDioError(e);
+    }
+  }
+
+  /// Upload profile image
+  Future<User> uploadProfileImage({
+    required int userId,
+    required String filePath,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          filePath,
+          filename: filePath.split('/').last,
+        ),
+      });
+
+      final response = await _apiClient.dio.patch(
+        '/users/$userId/image',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+      return User.fromJson(response.data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioError(e);
+    }
+  }
+
+  /// Remove profile image
+  Future<User> removeProfileImage(int userId) async {
+    try {
+      final response = await _apiClient.dio.delete('/users/$userId/image');
+      return User.fromJson(response.data);
     } on DioException catch (e) {
       throw ApiException.fromDioError(e);
     }

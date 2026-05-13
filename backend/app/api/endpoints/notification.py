@@ -21,7 +21,6 @@ def _push_and_save(user_id, fcm_token, nearby):
     db = SessionLocal()
     try:
         for poi in nearby:
-            # ← skip if notified recently
             if notif_crud.was_recently_notified(db, user_id, poi["id"]):
                 continue
 

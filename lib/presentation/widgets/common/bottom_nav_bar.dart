@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../providers/notification_provider.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -55,7 +57,23 @@ class CustomBottomNavBar extends StatelessWidget {
               BottomNavigationBarItem(
                 icon: Container(
                   padding: const EdgeInsets.only(top: 4),
-                  child: const Icon(Icons.notifications_outlined),
+                  child: Consumer<NotificationProvider>(
+                    builder: (context, provider, _) {
+                      final count = provider.unreadCount;
+                      return Badge(
+                        isLabelVisible: count > 0,
+                        label: Text(
+                          count > 99 ? '99+' : '$count',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: Colors.red,
+                        child: const Icon(Icons.notifications_outlined),
+                      );
+                    },
+                  ),
                 ),
                 label: AppStrings.updates,
               ),
